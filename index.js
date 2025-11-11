@@ -1,14 +1,33 @@
 // =============================
-// BOT CTM – Multi-villes & Google Sheets (CommonJS) + correctif niveaux & cumul ressources
+// BOT CTM – Multi-villes & Google Sheets (CommonJS)
+// + Serveur Express pour Render (anti-sleep)
 // =============================
 
 const { google } = require("googleapis");
 const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const express = require("express"); // ← ajouté
 require("dotenv").config();
 
-// Vérifie que le fichier JSON existe avant de lancer
+// --- Petit serveur Express pour Render ---
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Route simple pour UptimeRobot / Render
+app.get("/", (req, res) => {
+  res.send("🤖 Bot CTM Discord est en ligne et actif sur Render !");
+});
+
+// Lancement du serveur HTTP
+app.listen(PORT, () => {
+  console.log(`🌐 Serveur web actif sur le port ${PORT}`);
+});
+
+// =============================
+// CONFIGURATION GOOGLE SHEETS
+// =============================
+
 const authPath = path.join(process.cwd(), "gestion-ctm-bc86da201e15.json");
 if (!fs.existsSync(authPath)) {
   console.error("❌ Le fichier 'gestion-ctm-bc86da201e15.json' est introuvable !");
@@ -16,12 +35,10 @@ if (!fs.existsSync(authPath)) {
 }
 const authData = require(authPath);
 
-// ⚙️ CONFIGURATION
 const SHEET_ID = "147GKy0bMGftEbbTKxd3x_XVEnq-HANMdRWfGVcvrR0g";
 const SHEET_NAME = "Rapport";
 const PLAYER_NAME_COL = "O";
 
-// 🧾 Colonnes ressources
 const COLS = {
   poterie: "C",
   fer: "D",
@@ -35,20 +52,18 @@ const COLS = {
   argent: "N"
 };
 
-// 🏗️ Colonnes bâtiments (ajout niveau 3 pour argile et pâturage)
 const BUILDING_COLS = {
   scierie: { 1: "X", 2: "AF", 3: "AP", 4: "BC", 5: "BT" },
   ferme: { 1: "Y", 2: "AG", 3: "AQ", 4: "BD", 5: "BU" },
   carriere_pierre: { 1: "AH", 2: "AR", 3: "BE", 4: "BV" },
   atelier_tanneur: { 1: "AI", 2: "AS", 3: "BF", 4: "BW" },
-  paturage: { 1: "AT", 2: "BG", 3: "BY" },          // ← ajouté BY
-  carriere_argile: { 1: "AU", 2: "BH", 3: "BX" },    // ← ajouté BX
+  paturage: { 1: "AT", 2: "BG", 3: "BY" },
+  carriere_argile: { 1: "AU", 2: "BH", 3: "BX" },
   mine_sel: { 1: "BI", 2: "BZ" },
   mine_fer: { 1: "BJ", 2: "CA" },
   atelier_poterie: { 1: "BK", 2: "CB" }
 };
 
-// 🎲 Table des gains
 const LEVEL_CONFIG = {
   1: { dice: 5, mult: 100 },
   2: { dice: 6, mult: 150 },
@@ -57,7 +72,6 @@ const LEVEL_CONFIG = {
   5: { dice: 9, mult: 300 }
 };
 
-// 🔗 Bâtiment → ressource produite
 const BUILD_RESOURCE = {
   scierie: "bois",
   ferme: "nourriture",
@@ -70,7 +84,6 @@ const BUILD_RESOURCE = {
   atelier_poterie: "poterie"
 };
 
-// 🧩 Emojis ressources
 const RESOURCE_EMOJIS = {
   bois: "🪵",
   pierre: "🪨",
@@ -84,7 +97,9 @@ const RESOURCE_EMOJIS = {
   argent: "💰"
 };
 
-// ========== UTILITAIRES ==========
+// =============================
+// UTILITAIRES
+// =============================
 
 function letterToIndex(letter) {
   let index = 0;
@@ -157,13 +172,11 @@ function calcTotalGains(cities) {
   const totals = {};
   for (const city of cities) {
     const lvls = detectBuildingLevels(city.data);
-
     console.log(`🏙️ Ville (ligne ${city.index + 11})`);
     Object.entries(lvls).forEach(([bat, lvl]) => {
       const emoji = lvl > 0 ? "✅" : "❌";
       console.log(`   ${emoji} ${bat.padEnd(20)} → niveau ${lvl}`);
     });
-
     for (const [bat, lvl] of Object.entries(lvls)) {
       if (lvl > 0) {
         const ressource = BUILD_RESOURCE[bat];
@@ -176,7 +189,6 @@ function calcTotalGains(cities) {
   return totals;
 }
 
-// ✅ Mise à jour des ressources globales du joueur (cumul avec valeur existante)
 async function updatePlayerResources(sheets, baseRowIndex, updates) {
   const rowNumber = 11 + baseRowIndex;
   const fullRange = `${SHEET_NAME}!A${rowNumber}:N${rowNumber}`;
@@ -190,11 +202,9 @@ async function updatePlayerResources(sheets, baseRowIndex, updates) {
   for (const [key, delta] of Object.entries(updates)) {
     if (!COLS[key]) continue;
     const idx = letterToIndex(COLS[key]);
-
     const currentRaw = row[idx] || "0";
     const current = parseInt(currentRaw.replace(/\D/g, "")) || 0;
     const newVal = current + (parseInt(delta) || 0);
-
     console.log(`🧮 ${key} : ${current} + ${delta} = ${newVal}`);
     row[idx] = String(newVal);
   }
@@ -252,7 +262,10 @@ async function handleRoll(interaction) {
   }
 }
 
-// 🚀 Lancement du bot Discord
+// =============================
+// DISCORD BOT
+// =============================
+
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
