@@ -9,7 +9,7 @@ const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 require("dotenv").config();
 
 // Vérifie que le fichier JSON existe avant de lancer
-const authPath = path.join((process.cwd(), "gestion-ctm-bc86da201e15.json");
+const authPath = path.join(process.cwd(), "gestion-ctm-bc86da201e15.json");
 if (!fs.existsSync(authPath)) {
   console.error("❌ Le fichier 'gestion-ctm-bc86da201e15.json' est introuvable !");
   process.exit(1);
