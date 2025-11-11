@@ -1,0 +1,16 @@
+{
+  "name": "gestionnaire-ctm",
+  "version": "1.0.0",
+  "description": "Bot Discord CTM - gestion ressources avec Google Sheets (no secrets included)",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js",
+    "register": "node register-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.2",
+    "googleapis": "^136.0.0",
+    "dotenv": "^16.0.0"
+  }
+}
