@@ -38,7 +38,11 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
     console.log("🔁 Enregistrement des slash commands...");
 
     await rest.put(
-      Routes.applicationCommands(process.env.CLIENT_ID),
+      Routes.applicationGuildCommands(
+  process.env.CLIENT_ID,
+  process.env.GUILD_ID
+)
+,
       { body: commands }
     );
 
