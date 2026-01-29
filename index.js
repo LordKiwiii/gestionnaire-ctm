@@ -246,6 +246,24 @@ function nextLevel(row, key) {
   }
   return null;
 }
+function getPlayerCities(rows, playerName) {
+  const cities = [];
+
+  for (const row of rows) {
+    // adapte l’index si nécessaire
+    const owner = row[1];      // joueur
+    const cityName = row[0];   // nom de la ville
+
+    if (owner === playerName) {
+      cities.push({
+        name: cityName,
+        data: row
+      });
+    }
+  }
+
+  return cities;
+}
 
 // =============================
 // DISCORD BOT
@@ -320,6 +338,9 @@ await sheets.spreadsheets.values.update({
 
 
   interaction.editReply(`🏗️ **${building} niveau ${lvl} lancé !**`);
+});
+process.on("unhandledRejection", err => {
+  console.error("Unhandled rejection:", err);
 });
 
 client.login(process.env.DISCORD_TOKEN);
