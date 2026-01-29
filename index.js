@@ -338,7 +338,6 @@ async function handleBuild(interaction) {
 
   const city = cities[cities.length - 1]; 
   const row = [...city.data];
-  const row = [...city.data];
 
   const nextLvl = getNextBuildLevel(row, buildingKey);
   if (!nextLvl) {
