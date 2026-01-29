@@ -259,38 +259,65 @@ client.once("ready", () => {
 
 client.on("interactionCreate", async interaction => {
   if (!interaction.isCommand()) return;
-  if (interaction.commandName !== "build") return;
+  
 
-  const building = interaction.options.getString("batiment");
-  const player = interaction.user.username;
-  await interaction.deferReply();
+const cities = getPlayerCities(rows, player);
 
-  const sheets = await getSheetsClient();
-  const rows = (await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A11:CH`
-  })).data.values || [];
+if (!cities.length) {
+  return interaction.editReply("❌ Joueur introuvable");
+}
 
-  const rowIndex = rows.findIndex(r => r[idx(PLAYER_NAME_COL)] === player);
-  if (rowIndex === -1) return interaction.editReply("❌ Joueur introuvable");
+// 🔹 Ressources = première ville
+const resourceCity = cities[0];
+const resourceRow = [...resourceCity.data];
 
-  const row = rows[rowIndex];
-  const lvl = nextLevel(row, building);
-  const cfg = BUILD_COSTS[building]?.[lvl];
+// 🔹 Construction = dernière ville
+const buildCity = cities[cities.length - 1];
+const buildRow = [...buildCity.data];
 
-  if (!cfg) return interaction.editReply("🏗️ Niveau maximum atteint");
-  if (!hasCity(row, cfg.requires)) return interaction.editReply("🏛️ Niveau de ville insuffisant");
-  if (!canAfford(row, cfg.costs)) return interaction.editReply("💸 Ressources insuffisantes");
+const lvl = nextLevel(buildRow, building);
+if (!lvl) {
+  return interaction.editReply("🏗️ Niveau maximum atteint");
+}
 
-  deduct(row, cfg.costs);
-  row[idx(BUILDING_COLS[building][lvl])] = "En construction";
+const cfg = BUILD_COSTS[building]?.[lvl];
+if (!cfg) {
+  return interaction.editReply("❌ Coûts non définis");
+}
 
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A11:CH`,
-    valueInputOption: "USER_ENTERED",
-    resource: { values: rows }
-  });
+if (!hasCity(buildRow, cfg.requires)) {
+  return interaction.editReply("🏛️ Niveau de ville insuffisant");
+}
+
+// ✅ Ressources lues sur la PREMIÈRE ville
+if (!canAfford(resourceRow, cfg.costs)) {
+  return interaction.editReply("💸 Ressources insuffisantes");
+}
+
+// ✅ Déduction sur la PREMIÈRE ville
+deduct(resourceRow, cfg.costs);
+
+// ✅ Construction sur la DERNIÈRE ville
+buildRow[idx(BUILDING_COLS[building][lvl])] = "En construction";
+
+// 🔁 Update ressources
+const resRowNum = 11 + resourceCity.index;
+await sheets.spreadsheets.values.update({
+  spreadsheetId: SHEET_ID,
+  range: `${SHEET_NAME}!A${resRowNum}:CH${resRowNum}`,
+  valueInputOption: "USER_ENTERED",
+  resource: { values: [resourceRow] }
+});
+
+// 🔁 Update construction
+const buildRowNum = 11 + buildCity.index;
+await sheets.spreadsheets.values.update({
+  spreadsheetId: SHEET_ID,
+  range: `${SHEET_NAME}!A${buildRowNum}:CH${buildRowNum}`,
+  valueInputOption: "USER_ENTERED",
+  resource: { values: [buildRow] }
+});
+
 
   interaction.editReply(`🏗️ **${building} niveau ${lvl} lancé !**`);
 });
