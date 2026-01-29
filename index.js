@@ -336,31 +336,109 @@ async function handleBuild(interaction) {
     return interaction.editReply("❌ Joueur introuvable.");
   }
 
-  const city = cities[cities.length - 1]; 
-  const row = [...city.data];
+  // 🏦 Ressources = première ville
+  const resourceCity = cities[0];
+  const resourceRow = [...resourceCity.data];
 
-  const nextLvl = getNextBuildLevel(row, buildingKey);
+  // 🏗️ Construction = dernière ville
+  const buildCity = cities[cities.length - 1];
+  const buildRow = [...buildCity.data];
+
+  // 🏙️ Nom de la ville (colonne S)
+  const cityName =
+    buildRow[letterToIndex("S")]?.trim() || "Ville inconnue";
+
+  const nextLvl = getNextBuildLevel(buildRow, buildingKey);
   if (!nextLvl) {
-    return interaction.editReply("🏗️ Niveau maximum atteint.");
+    return interaction.editReply(
+      `🏗️ **${cityName}** a déjà ce bâtiment au niveau maximum.`
+    );
   }
 
   const costs = BUILD_COSTS[buildingKey]?.[nextLvl];
-  if (!costs || !canAfford(row, costs)) {
-    return interaction.editReply("💸 Ressources insuffisantes.");
+  if (!costs || !canAfford(resourceRow, costs)) {
+    return interaction.editReply(
+      `💸 Ressources insuffisantes pour construire dans **${cityName}**.`
+    );
   }
 
-  deductCosts(row, costs);
-  row[letterToIndex(BUILDING_COLS[buildingKey][nextLvl])] = "En construction";
+  // 💰 Déduction des ressources
+  deductCosts(resourceRow, costs);
 
-  const rowNumber = 11 + city.index;
+  // 🚧 Marquer la construction sur la bonne ville
+  buildRow[letterToIndex(BUILDING_COLS[buildingKey][nextLvl])] =
+    "En construction";
+
+  // 📤 Update ressources (première ville)
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A${rowNumber}:CH${rowNumber}`,
+    range: `${SHEET_NAME}!A${11 + resourceCity.index}:CH${11 + resourceCity.index}`,
     valueInputOption: "USER_ENTERED",
-    resource: { values: [row] }
+    resource: { values: [resourceRow] }
   });
 
-  await interaction.editReply(`🏗️ **${buildingKey} niveau ${nextLvl} lancé !**`);
+  // 📤 Update construction (dernière ville)
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SHEET_ID,
+    range: `${SHEET_NAME}!A${11 + buildCity.index}:CH${11 + buildCity.index}`,
+    valueInputOption: "USER_ENTERED",
+    resource: { values: [buildRow] }
+  });
+
+  // 📣 Message final
+  await interaction.editReply(
+    `🏗️ **${buildingKey} niveau ${nextLvl}** lancé dans la ville **${cityName}** !`
+  );
+}
+
+async function handleVille(interaction) {
+  const playerName = interaction.user.username;
+  await interaction.deferReply();
+
+  const sheets = await getSheetsClient();
+  const rows = await readSheet(sheets);
+  const cities = getPlayerCities(rows, playerName);
+
+  if (!cities.length) {
+    return interaction.editReply("❌ Joueur introuvable.");
+  }
+
+  const embeds = [];
+
+  cities.forEach((city, index) => {
+    const row = city.data;
+
+    const cityName =
+      row[letterToIndex("S")]?.trim() || `Ville ${index + 1}`;
+
+    const levels = detectBuildingLevels(row);
+
+    const fields = Object.entries(levels)
+      .filter(([, lvl]) => lvl > 0)
+      .map(([bat, lvl]) => ({
+        name: `🏗️ ${bat}`,
+        value: `Niveau ${lvl}`,
+        inline: true
+      }));
+
+    if (!fields.length) {
+      fields.push({
+        name: "🏚️ Aucun bâtiment",
+        value: "—",
+        inline: false
+      });
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle(`🏙️ ${cityName}`)
+      .setDescription(`📍 Ville n°${index + 1}`)
+      .addFields(fields)
+      .setColor(index === cities.length - 1 ? 0x00ccff : 0x999999);
+
+    embeds.push(embed);
+  });
+
+  await interaction.editReply({ embeds });
 }
 
 // =============================
@@ -380,6 +458,7 @@ client.on("interactionCreate", async (interaction) => {
 
   if (interaction.commandName === "roll") await handleRoll(interaction);
   if (interaction.commandName === "build") await handleBuild(interaction);
+  if (interaction.commandName === "ville") await handleVille(interaction);
 });
 
 client.login(process.env.DISCORD_TOKEN);
