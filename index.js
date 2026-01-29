@@ -336,7 +336,8 @@ async function handleBuild(interaction) {
     return interaction.editReply("❌ Joueur introuvable.");
   }
 
-  const city = cities[0];
+  const city = cities[cities.length - 1]; 
+  const row = [...city.data];
   const row = [...city.data];
 
   const nextLvl = getNextBuildLevel(row, buildingKey);
