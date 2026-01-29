@@ -1,5 +1,5 @@
 // =============================
-// BOT CTM – Multi-villes & Google Sheets
+// BOT CTM – INDEX.JS COMPLET
 // =============================
 
 const { google } = require("googleapis");
@@ -10,19 +10,13 @@ const express = require("express");
 require("dotenv").config();
 
 // =============================
-// EXPRESS (Render / Uptime)
+// EXPRESS (Render keep alive)
 // =============================
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-app.get("/", (req, res) => {
-  res.send("🤖 Bot CTM Discord actif !");
-});
-
-app.listen(PORT, () => {
-  console.log(`🌐 Serveur web actif sur le port ${PORT}`);
-});
+app.get("/", (_, res) => res.send("🤖 Bot CTM actif"));
+app.listen(PORT, () => console.log(`🌐 Web OK : ${PORT}`));
 
 // =============================
 // GOOGLE SHEETS CONFIG
@@ -39,146 +33,14 @@ const SHEET_ID = "147GKy0bMGftEbbTKxd3x_XVEnq-HANMdRWfGVcvrR0g";
 const SHEET_NAME = "Rapport";
 const PLAYER_NAME_COL = "O";
 
-const COLS = {
-  poterie: "C",
-  fer: "D",
-  sel: "E",
-  argile: "F",
-  laine: "G",
-  fourrure: "H",
-  pierre: "I",
-  nourriture: "J",
-  bois: "K",
-  argent: "N"
-};
-
-const BUILDING_COLS = {
-  scierie: { 1: "X", 2: "AF", 3: "AP", 4: "BC", 5: "BT" },
-  ferme: { 1: "Y", 2: "AG", 3: "AQ", 4: "BD", 5: "BU" },
-  carriere_pierre: { 1: "AH", 2: "AR", 3: "BE", 4: "BV" },
-  atelier_tanneur: { 1: "AI", 2: "AS", 3: "BF", 4: "BW" },
-  paturage: { 1: "AT", 2: "BG", 3: "BY" },
-  carriere_argile: { 1: "AU", 2: "BH", 3: "BX" },
-  mine_sel: { 1: "BI", 2: "BZ" },
-  mine_fer: { 1: "BJ", 2: "CA" },
-  atelier_poterie: { 1: "BK", 2: "CB" }
-};
-
-const LEVEL_CONFIG = {
-  1: { dice: 5, mult: 100 },
-  2: { dice: 6, mult: 150 },
-  3: { dice: 7, mult: 200 },
-  4: { dice: 8, mult: 250 },
-  5: { dice: 9, mult: 300 }
-};
-
-const BUILD_RESOURCE = {
-  scierie: "bois",
-  ferme: "nourriture",
-  carriere_pierre: "pierre",
-  atelier_tanneur: "fourrure",
-  paturage: "laine",
-  carriere_argile: "argile",
-  mine_sel: "sel",
-  mine_fer: "fer",
-  atelier_poterie: "poterie"
-};
-
-const RESOURCE_EMOJIS = {
-  bois: "🪵",
-  pierre: "🪨",
-  nourriture: "🍖",
-  fer: "⛓️",
-  sel: "🧂",
-  argile: "🏺",
-  laine: "🐑",
-  fourrure: "🦊",
-  poterie: "⚱️",
-  argent: "💰"
-};
-
-// =============================
-// COUTS DES BATIMENTS
-// =============================
-
-const BUILD_COSTS = {
-  scierie: {
-    1: { argent: 500 },
-    2: { argent: 1000, bois: 500, nourriture: 500, pierre: 500 },
-    3: { argent: 1500, bois: 1000, nourriture: 1000, pierre: 1000, argile: 500 },
-    4: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1500, argile: 1000, fer: 500 },
-    5: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 2000, argile: 1500, fer: 1000 }
-  },
-
-  ferme: {
-    1: { argent: 500, bois: 400 },
-    2: { argent: 1200, bois: 800, nourriture: 700, pierre: 600 },
-    3: { argent: 1800, bois: 1400, nourriture: 1300, pierre: 1200, laine: 500 },
-    4: { argent: 2400, bois: 2000, nourriture: 1900, pierre: 1800, laine: 1100, sel: 400, poterie: 400 },
-    5: { argent: 3000, bois: 2600, nourriture: 2500, pierre: 2400, laine: 1700, sel: 1000, poterie: 1000 }
-  },
-
-  carriere_pierre: {
-    1: { argent: 1500, bois: 1000, nourriture: 1000 },
-    2: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, argile: 500 },
-    3: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, argile: 1000, fer: 500 },
-    4: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, argile: 1500, fer: 1000 }
-  },
-
-  atelier_tanneur: {
-    1: { argent: 1500, bois: 1000, nourriture: 1000, pierre: 600 },
-    2: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1500, laine: 500 },
-    3: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, laine: 1000, fer: 500, sel: 500 },
-    4: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, argile: 1500, fer: 1000, sel: 1000 }
-  },
-
-  paturage: {
-    1: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, fourrure: 1000 },
-    2: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, fourrure: 1500, fer: 500, sel: 500, laine: 500 },
-    3: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, fer: 1000, sel: 1000, laine: 1000 }
-  },
-
-  carriere_argile: {
-    1: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, fourrure: 500 },
-    2: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 1000, fer: 500 },
-    3: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000 }
-  },
-
-  mine_fer: {
-    1: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 1000 },
-    2: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000 }
-  },
-
-  mine_sel: {
-    1: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 1000, fer: 500 },
-    2: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000 }
-  },
-
-  atelier_poterie: {
-    1: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 2000, laine: 500 },
-    2: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000, laine: 1000 }
-  }
-};
-
 // =============================
 // UTILITAIRES
 // =============================
 
-function letterToIndex(letter) {
-  let index = 0;
-  for (let i = 0; i < letter.length; i++) {
-    index = index * 26 + (letter.charCodeAt(i) - 64);
-  }
-  return index - 1;
-}
-
-function rollDice(dice, mult) {
-  return (Math.floor(Math.random() * dice) + 1) * mult;
-}
-
-function gainForBuilding(lvl) {
-  const cfg = LEVEL_CONFIG[lvl] || LEVEL_CONFIG[1];
-  return rollDice(cfg.dice, cfg.mult);
+function idx(letter) {
+  let i = 0;
+  for (const c of letter) i = i * 26 + (c.charCodeAt(0) - 64);
+  return i - 1;
 }
 
 async function getSheetsClient() {
@@ -188,277 +50,249 @@ async function getSheetsClient() {
   });
   return google.sheets({ version: "v4", auth });
 }
+// =============================
+// COLONNES RESSOURCES
+// =============================
 
-async function readSheet(sheets) {
-  const range = `${SHEET_NAME}!A11:CH`;
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range });
-  return res.data.values || [];
-}
+const COLS = {
+  bois: "K",
+  pierre: "I",
+  nourriture: "J",
+  fer: "D",
+  sel: "E",
+  argile: "F",
+  laine: "G",
+  fourrure: "H",
+  poterie: "C",
+  argent: "N"
+};
 
-function getPlayerCities(rows, playerName) {
-  const cities = [];
-  let found = false;
+// =============================
+// DETECTION NIVEAU DE VILLE
+// =============================
 
-  for (let i = 0; i < rows.length; i++) {
-    const cell = rows[i][letterToIndex(PLAYER_NAME_COL)];
-    if (cell && cell.trim() === playerName.trim()) {
-      found = true;
-      cities.push({ index: i, data: rows[i] });
-      continue;
-    }
-    if (found) {
-      if (cell && cell.trim() !== "") break;
-      cities.push({ index: i, data: rows[i] });
-    }
-  }
-  return cities;
-}
-
-function detectBuildingLevels(row) {
-  const levels = {};
-  for (const [bat, lvlCols] of Object.entries(BUILDING_COLS)) {
-    let max = 0;
-    for (const [lvl, col] of Object.entries(lvlCols)) {
-      const val = row[letterToIndex(col)];
-      if (val && val.toLowerCase().includes("terminé")) {
-        max = Math.max(max, parseInt(lvl));
-      }
-    }
-    levels[bat] = max;
-  }
-  return levels;
-}
-
-function calcTotalGains(cities) {
-  const totals = {};
-  for (const city of cities) {
-    const lvls = detectBuildingLevels(city.data);
-    for (const [bat, lvl] of Object.entries(lvls)) {
-      if (lvl > 0) {
-        const res = BUILD_RESOURCE[bat];
-        const gain = gainForBuilding(lvl);
-        totals[res] = (totals[res] || 0) + gain;
-      }
-    }
-  }
-  return totals;
-}
-
-async function updatePlayerResources(sheets, baseRowIndex, updates) {
-  const rowNumber = 11 + baseRowIndex;
-  const range = `${SHEET_NAME}!A${rowNumber}:N${rowNumber}`;
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range });
-  const row = res.data.values?.[0] || [];
-
-  for (const [key, delta] of Object.entries(updates)) {
-    const idx = letterToIndex(COLS[key]);
-    const cur = parseInt((row[idx] || "0").replace(/\D/g, "")) || 0;
-    row[idx] = String(cur + delta);
-  }
-
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SHEET_ID,
-    range,
-    valueInputOption: "USER_ENTERED",
-    resource: { values: [row] }
-  });
-}
-
-function getNextBuildLevel(row, buildingKey) {
-  const cols = BUILDING_COLS[buildingKey];
-  for (const lvl of Object.keys(cols)) {
-    const val = row[letterToIndex(cols[lvl])];
-    if (!val || val.trim() === "") return parseInt(lvl);
-  }
+function getCityLevel(row) {
+  if (row[idx("BR")]) return "cite";
+  if (row[idx("BA")]) return "ville";
+  if (row[idx("AN")]) return "bourg";
+  if (row[idx("AC")]) return "village";
   return null;
 }
 
+function hasCity(row, required) {
+  if (!required) return true;
+  const order = ["village", "bourg", "ville", "cite"];
+  return order.indexOf(getCityLevel(row)) >= order.indexOf(required);
+}
+
+// =============================
+// BATIMENTS / COLONNES
+// =============================
+
+const BUILDING_COLS = {
+  scierie: { 1: "X", 2: "AF", 3: "AP", 4: "BC", 5: "BT" },
+  ferme: { 1: "Y", 2: "AG", 3: "AQ", 4: "BD", 5: "BU" },
+  carriere_pierre: { 1: "AH", 2: "AR", 3: "BE", 4: "BV" },
+  atelier_tanneur: { 1: "AI", 2: "AS", 3: "BF", 4: "BW" },
+  paturage: { 1: "AT", 2: "BG", 3: "BY" },
+  carriere_argile: { 1: "AU", 2: "BH", 3: "BX" },
+  mine_fer: { 1: "BJ", 2: "CA" },
+  mine_sel: { 1: "BI", 2: "BZ" },
+  atelier_poterie: { 1: "BK", 2: "CB" },
+
+  entrepot: { 1: "W", 2: "AD", 3: "AO", 4: "BB", 5: "BS" },
+
+  camp_militaire: { 1: "Z", 2: "AA", 3: "AB" },
+  caserne_militaire: { 1: "AJ", 2: "AK", 3: "AL" },
+  quartier_militaire: { 1: "AV", 2: "AW", 3: "AX" },
+  bastion_militaire: { 1: "BL", 2: "BM", 3: "BN" },
+  forteresse_militaire: { 1: "CC", 2: "CD", 3: "CE" },
+
+  village: { 1: "AC" },
+  bourg: { 1: "AN" },
+  ville: { 1: "BA" },
+  cite: { 1: "BR" }
+};
+// =============================
+// COUTS DES BATIMENTS
+// =============================
+
+const BUILD_COSTS = {
+
+  // ===== PRODUCTION =====
+  scierie: {
+    1: { costs: { argent: 500 }, requires: "village" },
+    2: { costs: { argent: 1000, bois: 500, nourriture: 500, pierre: 500 }, requires: "village" },
+    3: { costs: { argent: 1500, bois: 1000, nourriture: 1000, pierre: 1000, argile: 500 }, requires: "village" },
+    4: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1500, argile: 1000, fer: 500 }, requires: "ville" },
+    5: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 2000, argile: 1500, fer: 1000 }, requires: "ville" }
+  },
+
+  ferme: {
+    1: { costs: { argent: 500, bois: 400 }, requires: "village" },
+    2: { costs: { argent: 1200, bois: 800, nourriture: 700, pierre: 600 }, requires: "village" },
+    3: { costs: { argent: 1800, bois: 1400, nourriture: 1300, pierre: 1200, laine: 500 }, requires: "village" },
+    4: { costs: { argent: 2400, bois: 2000, nourriture: 1900, pierre: 1800, laine: 1100, sel: 400, poterie: 400 }, requires: "ville" },
+    5: { costs: { argent: 3000, bois: 2600, nourriture: 2500, pierre: 2400, laine: 1700, sel: 1000, poterie: 1000 }, requires: "ville" }
+  },
+
+
+  entrepot: {
+    1: { costs: { argent: 2000, bois: 1000, pierre: 1000, argile: 1000 } },
+    2: { costs: { argent: 4000, bois: 3000, pierre: 3000, argile: 3000 } },
+    3: { costs: { argent: 6000, bois: 5000, pierre: 5000, argile: 5000 } },
+    4: { costs: { argent: 8000, bois: 7000, pierre: 7000, argile: 7000 } },
+    5: { costs: { argent: 10000, bois: 9000, pierre: 9000, argile: 9000 } }
+  },
+  carriere_pierre: {
+    1: { costs: { argent: 1500, bois: 1000, nourriture: 1000 }, requires: "village" },
+    2: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, argile: 500 }, requires: "village" },
+    3: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, argile: 1000, fer: 500 }, requires: "ville" },
+    4: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, argile: 1500, fer: 1000 }, requires: "ville" }
+  },
+
+  atelier_tanneur: {
+    1: { costs: { argent: 1500, bois: 1000, nourriture: 1000, pierre: 600 }, requires: "village" },
+    2: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1500, laine: 500 }, requires: "village" },
+    3: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, laine: 1000, fer: 500, sel: 500 }, requires: "ville" },
+    4: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, argile: 1500, fer: 1000, sel: 1000 }, requires: "ville" }
+  },
+
+  paturage: {
+    1: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, fourrure: 1000 }, requires: "village" },
+    2: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, fourrure: 1500, fer: 500, sel: 500, laine: 500 }, requires: "ville" },
+    3: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, fer: 1000, sel: 1000, laine: 1000 }, requires: "ville" }
+  },
+
+  carriere_argile: {
+    1: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, fourrure: 500 }, requires: "village" },
+    2: { costs: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 1000, fer: 500 }, requires: "ville" },
+    3: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000 }, requires: "ville" }
+  },
+  
+  mine_fer: {
+    1: { costs: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 1000 }, requires: "ville" },
+    2: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000 }, requires: "cite" }
+  },
+
+  mine_sel: {
+    1: { costs: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 1000, fer: 500 }, requires: "ville" },
+    2: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000 }, requires: "cite" }
+  },
+
+  atelier_poterie: {
+    1: { costs: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 2000, laine: 500 }, requires: "ville" },
+    2: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000, laine: 1000 }, requires: "cite" }
+  },
+
+
+  village: { 1: { costs: { argent: 4500, bois: 3000, nourriture: 3000 } } },
+  bourg: { 1: { costs: { argent: 6000, bois: 5000, nourriture: 5000, pierre: 2500, fourrure: 2500 } } },
+  ville: { 1: { costs: { argent: 9500, bois: 7000, nourriture: 7000, pierre: 5000, fourrure: 5000, argile: 2500, laine: 2500 } } },
+  cite: { 1: { costs: { argent: 12500, bois: 10000, nourriture: 10000, pierre: 6000, fourrure: 6000, argile: 6000, laine: 4500, poterie: 3500, fer: 3500, sel: 3500 } } },
+
+  // ===== MILITAIRE =====
+  camp_militaire: {
+    1: { costs: { argent: 1000, bois: 500, nourriture: 500 } },
+    2: { costs: { argent: 500, bois: 500, pierre: 500, nourriture: 1000 } },
+    3: { costs: { argent: 1000, bois: 1000, pierre: 1000, nourriture: 1500, argile: 1500, laine: 1500 } }
+  },
+
+  caserne_militaire: {
+    1: { costs: { argent: 2000, bois: 1000, nourriture: 1000, pierre: 1000, fourrure: 1000 } },
+    2: { costs: { argent: 1500, bois: 1500, pierre: 1500, nourriture: 2000 } },
+    3: { costs: { argent: 2000, bois: 2000, pierre: 2000, nourriture: 2500, argile: 2000, laine: 2000 } }
+  },
+
+  quartier_militaire: {
+    1: { costs: { argent: 3500, bois: 2000, nourriture: 2000, pierre: 2000, fourrure: 2000, laine: 1000, argile: 1000 } },
+    2: { costs: { argent: 2500, bois: 2500, pierre: 2500, nourriture: 3000 } },
+    3: { costs: { argent: 3000, bois: 3000, pierre: 3000, nourriture: 3500, argile: 2500, laine: 2500 } }
+  },
+
+  bastion_militaire: {
+    1: { costs: { argent: 5000, bois: 3500, nourriture: 3500, pierre: 3600, fourrure: 3600, laine: 2500, argile: 2500, fer: 1500, sel: 1500, poterie: 1500 } },
+    2: { costs: { argent: 3500, bois: 3500, pierre: 3500, nourriture: 4000 } },
+    3: { costs: { argent: 4000, bois: 4000, pierre: 4000, nourriture: 4500, argile: 3000, laine: 3000 } }
+  },
+
+  forteresse_militaire: {
+    1: { costs: { argent: 9000, bois: 4500, nourriture: 4500, pierre: 4000, fourrure: 4000, laine: 3000, argile: 3000, fer: 2500, sel: 2500, poterie: 2500 } },
+    2: { costs: { argent: 4500, bois: 4500, pierre: 4500, nourriture: 5000 } },
+    3: { costs: { argent: 5000, bois: 5000, pierre: 5000, nourriture: 5500, argile: 3500, laine: 3500 } }
+  }
+};
+// =============================
+// OUTILS BUILD
+// =============================
+
 function canAfford(row, costs) {
-  return Object.entries(costs).every(([res, cost]) => {
-    const idx = letterToIndex(COLS[res]);
-    const cur = parseInt((row[idx] || "0").replace(/\D/g, "")) || 0;
-    return cur >= cost;
+  return Object.entries(costs).every(([r, v]) => {
+    const cur = parseInt((row[idx(COLS[r])] || "0").replace(/\D/g, "")) || 0;
+    return cur >= v;
   });
 }
 
-function deductCosts(row, costs) {
-  for (const [res, cost] of Object.entries(costs)) {
-    const idx = letterToIndex(COLS[res]);
-    const cur = parseInt((row[idx] || "0").replace(/\D/g, "")) || 0;
-    row[idx] = String(cur - cost);
+function deduct(row, costs) {
+  for (const [r, v] of Object.entries(costs)) {
+    const i = idx(COLS[r]);
+    row[i] = String((parseInt(row[i] || "0") || 0) - v);
   }
 }
 
-// =============================
-// COMMANDES
-// =============================
-
-async function handleRoll(interaction) {
-  const playerName = interaction.user.username;
-  await interaction.deferReply();
-
-  const sheets = await getSheetsClient();
-  const rows = await readSheet(sheets);
-  const cities = getPlayerCities(rows, playerName);
-
-  if (!cities.length) {
-    return interaction.editReply("❌ Joueur introuvable.");
+function nextLevel(row, key) {
+  for (const lvl of Object.keys(BUILDING_COLS[key])) {
+    if (!row[idx(BUILDING_COLS[key][lvl])]) return parseInt(lvl);
   }
-
-  const gains = calcTotalGains(cities);
-  await updatePlayerResources(sheets, cities[0].index, gains);
-
-  const fields = Object.entries(gains).map(([r, v]) => ({
-    name: `${RESOURCE_EMOJIS[r]} ${r}`,
-    value: `+${v}`,
-    inline: true
-  }));
-
-  const embed = new EmbedBuilder()
-    .setTitle("🎲 Récolte")
-    .addFields(fields)
-    .setColor(0x00cc66);
-
-  await interaction.editReply({ embeds: [embed] });
-}
-
-async function handleBuild(interaction) {
-  const buildingKey = interaction.options.getString("batiment");
-  const playerName = interaction.user.username;
-
-  await interaction.deferReply();
-
-  const sheets = await getSheetsClient();
-  const rows = await readSheet(sheets);
-  const cities = getPlayerCities(rows, playerName);
-
-  if (!cities.length) {
-    return interaction.editReply("❌ Joueur introuvable.");
-  }
-
-  // 🏦 Ressources = première ville
-  const resourceCity = cities[0];
-  const resourceRow = [...resourceCity.data];
-
-  // 🏗️ Construction = dernière ville
-  const buildCity = cities[cities.length - 1];
-  const buildRow = [...buildCity.data];
-
-  // 🏙️ Nom de la ville (colonne S)
-  const cityName =
-    buildRow[letterToIndex("S")]?.trim() || "Ville inconnue";
-
-  const nextLvl = getNextBuildLevel(buildRow, buildingKey);
-  if (!nextLvl) {
-    return interaction.editReply(
-      `🏗️ **${cityName}** a déjà ce bâtiment au niveau maximum.`
-    );
-  }
-
-  const costs = BUILD_COSTS[buildingKey]?.[nextLvl];
-  if (!costs || !canAfford(resourceRow, costs)) {
-    return interaction.editReply(
-      `💸 Ressources insuffisantes pour construire dans **${cityName}**.`
-    );
-  }
-
-  // 💰 Déduction des ressources
-  deductCosts(resourceRow, costs);
-
-  // 🚧 Marquer la construction sur la bonne ville
-  buildRow[letterToIndex(BUILDING_COLS[buildingKey][nextLvl])] =
-    "En construction";
-
-  // 📤 Update ressources (première ville)
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A${11 + resourceCity.index}:CH${11 + resourceCity.index}`,
-    valueInputOption: "USER_ENTERED",
-    resource: { values: [resourceRow] }
-  });
-
-  // 📤 Update construction (dernière ville)
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A${11 + buildCity.index}:CH${11 + buildCity.index}`,
-    valueInputOption: "USER_ENTERED",
-    resource: { values: [buildRow] }
-  });
-
-  // 📣 Message final
-  await interaction.editReply(
-    `🏗️ **${buildingKey} niveau ${nextLvl}** lancé dans la ville **${cityName}** !`
-  );
-}
-
-async function handleVille(interaction) {
-  const playerName = interaction.user.username;
-  await interaction.deferReply();
-
-  const sheets = await getSheetsClient();
-  const rows = await readSheet(sheets);
-  const cities = getPlayerCities(rows, playerName);
-
-  if (!cities.length) {
-    return interaction.editReply("❌ Joueur introuvable.");
-  }
-
-  const embeds = [];
-
-  cities.forEach((city, index) => {
-    const row = city.data;
-
-    const cityName =
-      row[letterToIndex("S")]?.trim() || `Ville ${index + 1}`;
-
-    const levels = detectBuildingLevels(row);
-
-    const fields = Object.entries(levels)
-      .filter(([, lvl]) => lvl > 0)
-      .map(([bat, lvl]) => ({
-        name: `🏗️ ${bat}`,
-        value: `Niveau ${lvl}`,
-        inline: true
-      }));
-
-    if (!fields.length) {
-      fields.push({
-        name: "🏚️ Aucun bâtiment",
-        value: "—",
-        inline: false
-      });
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle(`🏙️ ${cityName}`)
-      .setDescription(`📍 Ville n°${index + 1}`)
-      .addFields(fields)
-      .setColor(index === cities.length - 1 ? 0x00ccff : 0x999999);
-
-    embeds.push(embed);
-  });
-
-  await interaction.editReply({ embeds });
+  return null;
 }
 
 // =============================
 // DISCORD BOT
 // =============================
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
-});
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 client.once("ready", () => {
   console.log(`✅ Connecté en tant que ${client.user.tag}`);
 });
 
-client.on("interactionCreate", async (interaction) => {
+client.on("interactionCreate", async interaction => {
   if (!interaction.isCommand()) return;
+  if (interaction.commandName !== "build") return;
 
-  if (interaction.commandName === "roll") await handleRoll(interaction);
-  if (interaction.commandName === "build") await handleBuild(interaction);
-  if (interaction.commandName === "ville") await handleVille(interaction);
+  const building = interaction.options.getString("batiment");
+  const player = interaction.user.username;
+  await interaction.deferReply();
+
+  const sheets = await getSheetsClient();
+  const rows = (await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range: `${SHEET_NAME}!A11:CH`
+  })).data.values || [];
+
+  const rowIndex = rows.findIndex(r => r[idx(PLAYER_NAME_COL)] === player);
+  if (rowIndex === -1) return interaction.editReply("❌ Joueur introuvable");
+
+  const row = rows[rowIndex];
+  const lvl = nextLevel(row, building);
+  const cfg = BUILD_COSTS[building]?.[lvl];
+
+  if (!cfg) return interaction.editReply("🏗️ Niveau maximum atteint");
+  if (!hasCity(row, cfg.requires)) return interaction.editReply("🏛️ Niveau de ville insuffisant");
+  if (!canAfford(row, cfg.costs)) return interaction.editReply("💸 Ressources insuffisantes");
+
+  deduct(row, cfg.costs);
+  row[idx(BUILDING_COLS[building][lvl])] = "En construction";
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SHEET_ID,
+    range: `${SHEET_NAME}!A11:CH`,
+    valueInputOption: "USER_ENTERED",
+    resource: { values: rows }
+  });
+
+  interaction.editReply(`🏗️ **${building} niveau ${lvl} lancé !**`);
 });
 
 client.login(process.env.DISCORD_TOKEN);
