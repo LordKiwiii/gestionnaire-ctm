@@ -110,7 +110,7 @@ const BUILDING_COLS = {
 };
 
 // =============================
-// COUTS DES BATIMENTS
+// COUTS DES BATIMENTS (intégral)
 // =============================
 const BUILD_COSTS = {
   // ===== PRODUCTION =====
@@ -254,16 +254,16 @@ client.once("ready", () => {
 client.on("interactionCreate", async interaction => {
   if (!interaction.isCommand()) return;
 
+  // Déferre la réponse pour éviter le timeout
   await interaction.deferReply();
 
-  const player = interaction.options.getString("player");
-  const building = interaction.options.getString("batiment");
-
-  if (!player || !building) {
-    return interaction.editReply("❌ Paramètres manquants");
-  }
-
   try {
+    const building = interaction.options.getString("batiment"); // obligatoire
+    if (!building) return interaction.editReply("❌ Paramètre batiment manquant");
+
+    const player = interaction.user.username; // nom du joueur Discord comme référence
+
+    // Récupération des données Google Sheets
     const sheets = await getSheetsClient();
     const sheetData = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
@@ -271,16 +271,19 @@ client.on("interactionCreate", async interaction => {
     });
     const rows = sheetData.data.values || [];
 
+    // Cherche les villes du joueur
     const cities = getPlayerCities(rows, player);
-
     if (!cities.length) return interaction.editReply("❌ Joueur introuvable");
 
+    // Ressources = première ville
     const resourceCity = cities[0];
     const resourceRow = [...resourceCity.data];
 
+    // Construction = dernière ville
     const buildCity = cities[cities.length - 1];
     const buildRow = [...buildCity.data];
 
+    // Détermine le niveau suivant
     const lvl = nextLevel(buildRow, building);
     if (!lvl) return interaction.editReply("🏗️ Niveau maximum atteint");
 
@@ -290,26 +293,34 @@ client.on("interactionCreate", async interaction => {
     if (!hasCity(buildRow, cfg.requires)) return interaction.editReply("🏛️ Niveau de ville insuffisant");
     if (!canAfford(resourceRow, cfg.costs)) return interaction.editReply("💸 Ressources insuffisantes");
 
+    // Déduction des ressources
     deduct(resourceRow, cfg.costs);
+
+    // Marque la construction
     buildRow[idx(BUILDING_COLS[building][lvl])] = "En construction";
 
-    // 🔁 Update Sheets
+    // 🔁 Update Google Sheets
+    const resRowNum = 11 + resourceCity.index;
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A${11 + resourceCity.index}:CH${11 + resourceCity.index}`,
+      range: `${SHEET_NAME}!A${resRowNum}:CH${resRowNum}`,
       valueInputOption: "USER_ENTERED",
       resource: { values: [resourceRow] }
     });
+
+    const buildRowNum = 11 + buildCity.index;
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A${11 + buildCity.index}:CH${11 + buildCity.index}`,
+      range: `${SHEET_NAME}!A${buildRowNum}:CH${buildRowNum}`,
       valueInputOption: "USER_ENTERED",
       resource: { values: [buildRow] }
     });
 
+    // Réponse finale
     interaction.editReply(`🏗️ **${building} niveau ${lvl} lancé !**`);
+
   } catch (err) {
-    console.error("Erreur lors de la commande :", err);
+    console.error("Erreur lors de la commande build :", err);
     interaction.editReply("❌ Une erreur est survenue. Vérifiez les logs.");
   }
 });
