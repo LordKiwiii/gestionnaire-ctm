@@ -247,6 +247,26 @@ function nextLevel(row, key) {
   }
   return null;
 }
+// =============================
+// OUTILS VILLES
+// =============================
+
+function getPlayerCities(rows, player) {
+  const cities = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+
+    if (row[idx(PLAYER_NAME_COL)] === player) {
+      cities.push({
+        index: i,
+        data: row
+      });
+    }
+  }
+
+  return cities;
+}
 
 // =============================
 // DISCORD BOT
