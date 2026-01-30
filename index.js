@@ -30,7 +30,7 @@ if (!fs.existsSync(authPath)) {
 }
 const authData = require(authPath);
 
-const SHEET_ID = "147GKy0bMGftEbbTKxd3x_XVEnq-HANMdRWfGVcvrR0g";
+const SHEET_ID = "1c6tGfwmwEXDmyHoiUwsI7prtlfu_gN0nq-F82jC0As4";
 const SHEET_NAME = "Rapport";
 const PLAYER_NAME_COL = "O";
 
