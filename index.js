@@ -257,16 +257,27 @@ function getPlayerCities(rows, player) {
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
 
+    // ligne joueur
     if (row[idx(PLAYER_NAME_COL)] === player) {
-      cities.push({
-        index: i,
-        data: row
-      });
+
+      // on ignore la ligne "suite" (celle sans ville)
+      if (
+        row[idx("AC")] || // village
+        row[idx("AN")] || // bourg
+        row[idx("BA")] || // ville
+        row[idx("BR")]    // cité
+      ) {
+        cities.push({
+          index: i,
+          data: row
+        });
+      }
     }
   }
 
   return cities;
 }
+
 
 // =============================
 // DISCORD BOT
