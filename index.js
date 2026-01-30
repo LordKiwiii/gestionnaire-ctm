@@ -297,75 +297,80 @@ client.once("ready", () => {
 });
 
 client.on("interactionCreate", async interaction => {
-  if (!interaction.isCommand()) return;
+  if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== "build") return;
 
-  const building = interaction.options.getString("batiment");
-  const player = interaction.user.username;
-  await interaction.deferReply();
+  try {
+    await interaction.deferReply({ ephemeral: true });
 
-  const sheets = await getSheetsClient();
-  const rows = (await sheets.spreadsheets.values.get({
-    spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A11:CH`
-  })).data.values || [];
+    const building = interaction.options.getString("batiment");
+    const player = interaction.user.username;
 
-  // 🔹 Récupère TOUTES les villes du joueur
-  const cities = getPlayerCities(rows, player);
-  console.log("JOUEUR:", player);
-  console.log(
-    "LIGNES TROUVÉES:",
-    cities.map(c => ({
-      ligne: c.index + 11,
-      ville: c.cityName
-  }))
-);
+    const sheets = await getSheetsClient();
 
-  if (!cities.length) {
-    return interaction.editReply("❌ Joueur introuvable");
+    const rows = (await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A11:ZZ`
+    })).data.values || [];
+
+    const cities = getPlayerCities(rows, player);
+
+    console.log("JOUEUR:", player);
+    console.log(
+      "LIGNES TROUVÉES:",
+      cities.map(c => ({
+        ligne: c.index + 11,
+        ville: c.cityName
+      }))
+    );
+
+    if (!cities.length) {
+      return interaction.editReply("❌ Joueur introuvable");
+    }
+
+    const resourceCity = cities[0];
+    const resourceRow = [...resourceCity.data];
+
+    const buildCity = cities[cities.length - 1];
+    const row = [...buildCity.data];
+
+    const lvl = nextLevel(row, building);
+    const cfg = BUILD_COSTS[building]?.[lvl];
+
+    if (!cfg) return interaction.editReply("🏗️ Niveau maximum atteint");
+    if (!hasCity(row, cfg.requires)) return interaction.editReply("🏛️ Niveau insuffisant");
+
+    if (!canAfford(resourceRow, cfg.costs)) {
+      return interaction.editReply("💸 Ressources insuffisantes");
+    }
+
+    deduct(resourceRow, cfg.costs);
+
+    row[idx(BUILDING_COLS[building][lvl])] = "En construction";
+
+    rows[resourceCity.index] = resourceRow;
+    rows[buildCity.index] = row;
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A11:ZZ`,
+      valueInputOption: "USER_ENTERED",
+      resource: { values: rows }
+    });
+
+    await interaction.editReply(
+      `🏗️ **${building} niveau ${lvl} lancé dans ${buildCity.cityName} !**`
+    );
+
+  } catch (err) {
+    console.error("ERREUR BUILD:", err);
+
+    if (interaction.deferred || interaction.replied) {
+      interaction.editReply("❌ Erreur interne");
+    }
   }
-
-  // 🔹 Ressources = première ville
-  const resourceCity = cities[0];
-  const resourceRow = [...resourceCity.data];
-
-  // 🔹 Construction = dernière ville
-  console.log("Lignes trouvées :", cities.map(c => c.index + 11));
-  const buildCity = cities[cities.length - 1];
-  const row = [...buildCity.data]; // ⚠️ on garde le nom "row"
-
-  const lvl = nextLevel(row, building);
-  const cfg = BUILD_COSTS[building]?.[lvl];
-
-  if (!cfg) return interaction.editReply("🏗️ Niveau maximum atteint");
-  if (!hasCity(row, cfg.requires)) return interaction.editReply("🏛️ Niveau de ville insuffisant");
-
-  // ✅ Vérification ressources sur la PREMIÈRE ville
-  if (!canAfford(resourceRow, cfg.costs)) {
-    return interaction.editReply("💸 Ressources insuffisantes");
-  }
-
-  // ✅ Déduction ressources sur la PREMIÈRE ville
-  deduct(resourceRow, cfg.costs);
-
-  // ✅ Construction sur la DERNIÈRE ville
-  row[idx(BUILDING_COLS[building][lvl])] = "En construction";
-
-  // 🔁 Update ressources (première ville)
-  rows[resourceCity.index] = resourceRow;
-
-  // 🔁 Update construction (dernière ville)
-  rows[buildCity.index] = row;
-
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A11:ZZ`,
-    valueInputOption: "USER_ENTERED",
-    resource: { values: rows }
-  });
-
-  interaction.editReply(`🏗️ **${building} niveau ${lvl} lancé dans la dernière ville !**`);
 });
+
 
 
 client.login(process.env.DISCORD_TOKEN);
