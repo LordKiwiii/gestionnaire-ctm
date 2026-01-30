@@ -261,29 +261,30 @@ function nextLevel(row, key) {
 function getPlayerCities(rows, player) {
   const cities = [];
 
+  const cleanPlayer = player.toString().trim();
+
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
 
-    const sheetPlayer = row[idx(PLAYER_NAME_COL)] || "";
-    const cityName = row[idx("S")] || "";
+    const sheetPlayer = (row[idx(PLAYER_NAME_COL)] || "")
+      .toString()
+      .trim();
 
-    if (
-      sheetPlayer === player &&
-      cityName.toString().trim() !== ""
-    ) {
+    const cityName = (row[idx("S")] || "")
+      .toString()
+      .trim();
+
+    if (sheetPlayer === cleanPlayer && cityName !== "") {
       cities.push({
         index: i,
         data: row,
-        cityName: cityName.trim()
+        cityName
       });
     }
   }
 
   return cities;
 }
-
-
-
 
 // =============================
 // DISCORD BOT
@@ -311,6 +312,15 @@ client.on("interactionCreate", async interaction => {
 
   // 🔹 Récupère TOUTES les villes du joueur
   const cities = getPlayerCities(rows, player);
+  console.log("JOUEUR:", player);
+  console.log(
+    "LIGNES TROUVÉES:",
+    cities.map(c => ({
+      ligne: c.index + 11,
+      ville: c.cityName
+  }))
+);
+
   if (!cities.length) {
     return interaction.editReply("❌ Joueur introuvable");
   }
@@ -349,7 +359,7 @@ client.on("interactionCreate", async interaction => {
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A11:CH`,
+    range: `${SHEET_NAME}!A11:ZZ`,
     valueInputOption: "USER_ENTERED",
     resource: { values: rows }
   });
