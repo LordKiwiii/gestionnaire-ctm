@@ -261,18 +261,25 @@ function nextLevel(row, key) {
 function getPlayerCities(rows, player) {
   const cities = [];
 
-  const cleanPlayer = player.toString().trim();
+  let lastPlayer = null;
+
+  const cleanPlayer = player.trim();
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
 
-    const sheetPlayer = (row[idx(PLAYER_NAME_COL)] || "")
-      .toString()
-      .trim();
+    let sheetPlayer = (row[idx(PLAYER_NAME_COL)] || "").toString().trim();
 
-    const cityName = (row[idx("S")] || "")
-      .toString()
-      .trim();
+    // Si cellule vide → fusion → on reprend la précédente
+    if (sheetPlayer === "" && lastPlayer) {
+      sheetPlayer = lastPlayer;
+    }
+
+    if (sheetPlayer !== "") {
+      lastPlayer = sheetPlayer;
+    }
+
+    const cityName = (row[idx("S")] || "").toString().trim();
 
     if (sheetPlayer === cleanPlayer && cityName !== "") {
       cities.push({
