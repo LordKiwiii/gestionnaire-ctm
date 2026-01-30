@@ -258,19 +258,14 @@ function getPlayerCities(rows, player) {
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
 
-    // ligne joueur
+    // joueur OK
     if (row[idx(PLAYER_NAME_COL)] === player) {
-
-      // on ignore la ligne "suite" (celle sans ville)
-      if (
-        row[idx("AC")] || // village
-        row[idx("AN")] || // bourg
-        row[idx("BA")] || // ville
-        row[idx("BR")]    // cité
-      ) {
+      // VRAIE ville = colonne S remplie
+      if (row[idx("S")]) {
         cities.push({
           index: i,
-          data: row
+          data: row,
+          name: row[idx("S")]
         });
       }
     }
@@ -303,19 +298,6 @@ client.on("interactionCreate", async interaction => {
     spreadsheetId: SHEET_ID,
     range: `${SHEET_NAME}!A11:CH`
   })).data.values || [];
-  // =============================
-// DEBUG – LECTURE DES VILLES
-// =============================
-
-  let debug = `📋 **Debug villes pour ${player}**\n`;
-
-  rows.forEach((r, i) => {
-    if (r[idx(PLAYER_NAME_COL)] === player) {
-      const cityName = r[idx(CITY_NAME_COL)] || "(vide)";
-      debug += `Ligne ${i + 11} → Ville: ${cityName}\n`;
-    }
-  });
-  await interaction.editReply(debug);
 
   // 🔹 Récupère TOUTES les villes du joueur
   const cities = getPlayerCities(rows, player);
