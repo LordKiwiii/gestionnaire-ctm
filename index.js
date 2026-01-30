@@ -292,6 +292,196 @@ function getPlayerCities(rows, player) {
 
   return cities;
 }
+// =============================
+// ROLL – CONFIG + UTILITAIRES + HANDLER
+// (repris de l'ancien code, adapté à idx())
+// =============================
+
+const LEVEL_CONFIG = {
+  1: { dice: 5, mult: 100 },
+  2: { dice: 6, mult: 150 },
+  3: { dice: 7, mult: 200 },
+  4: { dice: 8, mult: 250 },
+  5: { dice: 9, mult: 300 }
+};
+
+const BUILD_RESOURCE = {
+  scierie: "bois",
+  ferme: "nourriture",
+  carriere_pierre: "pierre",
+  atelier_tanneur: "fourrure",
+  paturage: "laine",
+  carriere_argile: "argile",
+  mine_sel: "sel",
+  mine_fer: "fer",
+  atelier_poterie: "poterie"
+};
+
+const RESOURCE_EMOJIS = {
+  bois: "🪵",
+  pierre: "🪨",
+  nourriture: "🍖",
+  fer: "⛓️",
+  sel: "🧂",
+  argile: "🏺",
+  laine: "🐑",
+  fourrure: "🦊",
+  poterie: "⚱️",
+  argent: "💰"
+};
+
+function rollDice(dice, mult) {
+  return (Math.floor(Math.random() * dice) + 1) * mult;
+}
+
+function gainForBuilding(lvl) {
+  const cfg = LEVEL_CONFIG[lvl] || LEVEL_CONFIG[1];
+  return rollDice(cfg.dice, cfg.mult);
+}
+
+async function readSheet(sheets) {
+  const range = `${SHEET_NAME}!A11:CH`;
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range
+  });
+  return res.data.values || [];
+}
+
+/**
+ * ⚠️ Important: le roll doit fonctionner sur "toutes les lignes du joueur"
+ * (y compris les lignes vides / 2e ligne de ville).
+ * On reprend la logique de ton ancien getPlayerCities() :
+ * - on trouve la première ligne du joueur
+ * - puis on prend TOUTES les lignes suivantes jusqu'au prochain joueur (col O non vide et différent)
+ */
+function getPlayerRowsForRoll(rows, playerName) {
+  const out = [];
+  let found = false;
+
+  for (let i = 0; i < rows.length; i++) {
+    const cell = rows[i][idx(PLAYER_NAME_COL)];
+
+    if (cell && cell.trim() === playerName.trim()) {
+      found = true;
+      out.push({ index: i, data: rows[i] });
+      continue;
+    }
+
+    if (found) {
+      // stop dès qu'on rencontre un autre joueur (cellule col O non vide)
+      const nextPlayer = cell && cell.trim() !== "";
+      if (nextPlayer) break;
+
+      out.push({ index: i, data: rows[i] });
+    }
+  }
+
+  return out;
+}
+
+function detectBuildingLevels(row) {
+  const levels = {};
+
+  for (const [bat, lvlCols] of Object.entries(BUILDING_COLS)) {
+    // On ignore les "bâtiments visuels" qui n'ont pas de ressource associée
+    if (!BUILD_RESOURCE[bat]) continue;
+
+    let max = 0;
+    for (const [lvl, col] of Object.entries(lvlCols)) {
+      const val = row[idx(col)];
+      if (val && typeof val === "string" && val.toLowerCase().includes("terminé")) {
+        max = Math.max(max, parseInt(lvl, 10));
+      }
+    }
+    levels[bat] = max;
+  }
+
+  return levels;
+}
+
+function calcTotalGains(playerRows) {
+  const totals = {};
+
+  for (const city of playerRows) {
+    const lvls = detectBuildingLevels(city.data);
+
+    for (const [bat, lvl] of Object.entries(lvls)) {
+      if (lvl > 0) {
+        const ressource = BUILD_RESOURCE[bat];
+        const gain = gainForBuilding(lvl);
+        totals[ressource] = (totals[ressource] || 0) + gain;
+      }
+    }
+  }
+
+  return totals;
+}
+
+async function updatePlayerResources(sheets, baseRowIndex, updates) {
+  const rowNumber = 11 + baseRowIndex;
+  const range = `${SHEET_NAME}!A${rowNumber}:N${rowNumber}`;
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range
+  });
+
+  const row = res.data.values?.[0] || [];
+
+  for (const [key, delta] of Object.entries(updates)) {
+    if (!COLS[key]) continue;
+
+    const colIndex = idx(COLS[key]);
+    const cur = parseInt((row[colIndex] || "0").replace(/\D/g, "")) || 0;
+    row[colIndex] = String(cur + (parseInt(delta, 10) || 0));
+  }
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SHEET_ID,
+    range,
+    valueInputOption: "USER_ENTERED",
+    resource: { values: [row] }
+  });
+}
+
+async function handleRoll(interaction) {
+  const playerName = interaction.user.username;
+  await interaction.deferReply();
+
+  try {
+    const sheets = await getSheetsClient();
+    const rows = await readSheet(sheets);
+
+    const playerRows = getPlayerRowsForRoll(rows, playerName);
+    if (!playerRows.length) {
+      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${playerName}** dans le Sheets.`);
+    }
+
+    const totalGains = calcTotalGains(playerRows);
+
+    // ✅ Les ressources sont stockées sur la première ligne du joueur (comme avant)
+    await updatePlayerResources(sheets, playerRows[0].index, totalGains);
+
+    const fields = Object.entries(totalGains).map(([res, val]) => ({
+      name: `${RESOURCE_EMOJIS[res] || ""} ${res.charAt(0).toUpperCase() + res.slice(1)}`,
+      value: `**+${Number(val).toLocaleString()}**`,
+      inline: true
+    }));
+
+    const embed = new EmbedBuilder()
+      .setTitle("🎲 Récolte journalière")
+      .setDescription(`**${playerName}** a récolté les ressources de toutes ses lignes/villes :`)
+      .addFields(fields)
+      .setColor(0x00cc66);
+
+    return interaction.editReply({ embeds: [embed] });
+
+  } catch (err) {
+    console.error(err);
+    return interaction.editReply(`⚠️ Erreur : ${err.message}`);
+  }
+}
 
 // =============================
 // DISCORD BOT
@@ -305,10 +495,22 @@ client.once("ready", () => {
 
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
+
+  // =============================
+  // /roll
+  // =============================
+  if (interaction.commandName === "roll") {
+    // ⚠️ handleRoll s'occupe déjà de deferReply + editReply
+    return handleRoll(interaction);
+  }
+
+  // =============================
+  // /build
+  // =============================
   if (interaction.commandName !== "build") return;
 
   try {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply();
 
     const building = interaction.options.getString("batiment");
     const player = interaction.user.username;
@@ -373,7 +575,9 @@ client.on("interactionCreate", async interaction => {
     console.error("ERREUR BUILD:", err);
 
     if (interaction.deferred || interaction.replied) {
-      interaction.editReply("❌ Erreur interne");
+      await interaction.editReply("❌ Erreur interne");
+    } else {
+      await interaction.reply({ content: "❌ Erreur interne", ephemeral: true });
     }
   }
 });
