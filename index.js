@@ -272,19 +272,42 @@ client.on("interactionCreate", async interaction => {
     range: `${SHEET_NAME}!A11:CH`
   })).data.values || [];
 
-  const rowIndex = rows.findIndex(r => r[idx(PLAYER_NAME_COL)] === player);
-  if (rowIndex === -1) return interaction.editReply("❌ Joueur introuvable");
+  // 🔹 Récupère TOUTES les villes du joueur
+  const cities = getPlayerCities(rows, player);
+  if (!cities.length) {
+    return interaction.editReply("❌ Joueur introuvable");
+  }
 
-  const row = rows[rowIndex];
+  // 🔹 Ressources = première ville
+  const resourceCity = cities[0];
+  const resourceRow = [...resourceCity.data];
+
+  // 🔹 Construction = dernière ville
+  const buildCity = cities[cities.length - 1];
+  const row = [...buildCity.data]; // ⚠️ on garde le nom "row"
+
   const lvl = nextLevel(row, building);
   const cfg = BUILD_COSTS[building]?.[lvl];
 
   if (!cfg) return interaction.editReply("🏗️ Niveau maximum atteint");
   if (!hasCity(row, cfg.requires)) return interaction.editReply("🏛️ Niveau de ville insuffisant");
-  if (!canAfford(row, cfg.costs)) return interaction.editReply("💸 Ressources insuffisantes");
 
-  deduct(row, cfg.costs);
+  // ✅ Vérification ressources sur la PREMIÈRE ville
+  if (!canAfford(resourceRow, cfg.costs)) {
+    return interaction.editReply("💸 Ressources insuffisantes");
+  }
+
+  // ✅ Déduction ressources sur la PREMIÈRE ville
+  deduct(resourceRow, cfg.costs);
+
+  // ✅ Construction sur la DERNIÈRE ville
   row[idx(BUILDING_COLS[building][lvl])] = "En construction";
+
+  // 🔁 Update ressources (première ville)
+  rows[resourceCity.index] = resourceRow;
+
+  // 🔁 Update construction (dernière ville)
+  rows[buildCity.index] = row;
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
@@ -293,7 +316,8 @@ client.on("interactionCreate", async interaction => {
     resource: { values: rows }
   });
 
-  interaction.editReply(`🏗️ **${building} niveau ${lvl} lancé !**`);
+  interaction.editReply(`🏗️ **${building} niveau ${lvl} lancé dans la dernière ville !**`);
 });
+
 
 client.login(process.env.DISCORD_TOKEN);
