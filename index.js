@@ -244,10 +244,16 @@ function deduct(row, costs) {
 
 function nextLevel(row, key) {
   for (const lvl of Object.keys(BUILDING_COLS[key])) {
-    if (!row[idx(BUILDING_COLS[key][lvl])]) return parseInt(lvl);
+    const cell = row[idx(BUILDING_COLS[key][lvl])] || "";
+
+    if (cell.toString().trim() === "") {
+      return parseInt(lvl);
+    }
   }
+
   return null;
 }
+
 // =============================
 // OUTILS VILLES
 // =============================
@@ -258,21 +264,24 @@ function getPlayerCities(rows, player) {
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
 
-    // même logique que le roll
+    const sheetPlayer = row[idx(PLAYER_NAME_COL)] || "";
+    const cityName = row[idx("S")] || "";
+
     if (
-      row[idx(PLAYER_NAME_COL)] === player &&
-      row[idx("S")] && row[idx("S")].trim() !== ""
+      sheetPlayer === player &&
+      cityName.toString().trim() !== ""
     ) {
       cities.push({
         index: i,
         data: row,
-        cityName: row[idx("S")].trim()
+        cityName: cityName.trim()
       });
     }
   }
 
   return cities;
 }
+
 
 
 
@@ -311,6 +320,7 @@ client.on("interactionCreate", async interaction => {
   const resourceRow = [...resourceCity.data];
 
   // 🔹 Construction = dernière ville
+  console.log("Lignes trouvées :", cities.map(c => c.index + 11));
   const buildCity = cities[cities.length - 1];
   const row = [...buildCity.data]; // ⚠️ on garde le nom "row"
 
