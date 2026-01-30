@@ -7,6 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const express = require("express");
+const CITY_NAME_COL = "S";
 require("dotenv").config();
 
 // =============================
@@ -302,6 +303,19 @@ client.on("interactionCreate", async interaction => {
     spreadsheetId: SHEET_ID,
     range: `${SHEET_NAME}!A11:CH`
   })).data.values || [];
+  // =============================
+// DEBUG – LECTURE DES VILLES
+// =============================
+
+  let debug = `📋 **Debug villes pour ${player}**\n`;
+
+  rows.forEach((r, i) => {
+    if (r[idx(PLAYER_NAME_COL)] === player) {
+      const cityName = r[idx(CITY_NAME_COL)] || "(vide)";
+      debug += `Ligne ${i + 11} → Ville: ${cityName}\n`;
+    }
+  });
+  await interaction.editReply(debug);
 
   // 🔹 Récupère TOUTES les villes du joueur
   const cities = getPlayerCities(rows, player);
