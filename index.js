@@ -258,21 +258,22 @@ function getPlayerCities(rows, player) {
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
 
-    // joueur OK
-    if (row[idx(PLAYER_NAME_COL)] === player) {
-      // VRAIE ville = colonne S remplie
-      if (row[idx("S")]) {
-        cities.push({
-          index: i,
-          data: row,
-          name: row[idx("S")]
-        });
-      }
+    // même logique que le roll
+    if (
+      row[idx(PLAYER_NAME_COL)] === player &&
+      row[idx("S")] && row[idx("S")].trim() !== ""
+    ) {
+      cities.push({
+        index: i,
+        data: row,
+        cityName: row[idx("S")].trim()
+      });
     }
   }
 
   return cities;
 }
+
 
 
 // =============================
