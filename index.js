@@ -482,6 +482,119 @@ async function handleRoll(interaction) {
     return interaction.editReply(`⚠️ Erreur : ${err.message}`);
   }
 }
+// =============================
+// ARGENT – CONFIG + UTILITAIRES + HANDLER
+// (NE MODIFIE PAS getCityLevel/hasCity existants)
+// =============================
+
+const ARGENT_CONFIG = {
+  cite:   { dice: 5, mult: 300 },
+  ville:  { dice: 5, mult: 250 },
+  bourg:  { dice: 5, mult: 200 },
+  village:{ dice: 5, mult: 150 },
+  hameau: { dice: 5, mult: 100 }
+};
+
+// Pour l'argent : on ne compte QUE le dernier niveau "Terminé".
+// Si rien n'est "Terminé" => hameau.
+function getCityTierForArgent(row) {
+  const isDone = (col) => {
+    const v = (row[idx(col)] || "").toString().toLowerCase().trim();
+    return v.includes("terminé");
+  };
+
+  if (isDone("BR")) return "cite";
+  if (isDone("BA")) return "ville";
+  if (isDone("AN")) return "bourg";
+  if (isDone("AC")) return "village";
+  return "hameau";
+}
+
+async function handleArgent(interaction) {
+  const playerName = interaction.user.username;
+  await interaction.deferReply();
+
+  try {
+    const sheets = await getSheetsClient();
+    const rows = await readSheet(sheets);
+
+    // On récupère les VILLES (lignes avec un nom de ville en col S)
+    const cities = getPlayerCities(rows, playerName);
+    if (!cities.length) {
+      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${playerName}** dans le Sheets.`);
+    }
+
+    let total = 0;
+    const perCity = [];
+
+    for (const c of cities) {
+      const tier = getCityTierForArgent(c.data);
+      const cfg = ARGENT_CONFIG[tier] || ARGENT_CONFIG.hameau;
+      const gain = rollDice(cfg.dice, cfg.mult);
+
+      total += gain;
+      perCity.push({ cityName: c.cityName, tier, gain });
+    }
+
+    // Ajout sur la première ligne du joueur (même logique que /roll)
+    const playerRows = getPlayerRowsForRoll(rows, playerName);
+    if (!playerRows.length) {
+      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${playerName}** dans le Sheets.`);
+    }
+
+    await updatePlayerResources(sheets, playerRows[0].index, { argent: total });
+
+    const fields = perCity.map(x => ({
+      name: `🏛️ ${x.cityName}`,
+      value: `Niveau: **${x.tier}**\nGain: **+${Number(x.gain).toLocaleString()}** ${RESOURCE_EMOJIS.argent}`,
+      inline: true
+    }));
+
+    const embed = new EmbedBuilder()
+      .setTitle("💰 Revenus journaliers")
+      .setDescription(`**${playerName}** a perçu des revenus sur **${cities.length}** ville(s).`)
+      .addFields(fields)
+      .addFields({
+        name: "Total",
+        value: `**+${Number(total).toLocaleString()}** ${RESOURCE_EMOJIS.argent}`,
+        inline: false
+      })
+      .setColor(0xFFD700);
+
+    return interaction.editReply({ embeds: [embed] });
+
+  } catch (err) {
+    console.error(err);
+    return interaction.editReply(`⚠️ Erreur : ${err.message}`);
+  }
+}
+
+async function handleAdd(interaction) {
+  const playerName = interaction.user.username;
+  const montant = interaction.options.getInteger("montant");
+  await interaction.deferReply({ ephemeral: true });
+
+  if (!montant || montant <= 0) {
+    return interaction.editReply("❌ Montant invalide. Mets un nombre entier positif.");
+  }
+
+  try {
+    const sheets = await getSheetsClient();
+    const rows = await readSheet(sheets);
+
+    const playerRows = getPlayerRowsForRoll(rows, playerName);
+    if (!playerRows.length) {
+      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${playerName}** dans le Sheets.`);
+    }
+
+    await updatePlayerResources(sheets, playerRows[0].index, { argent: montant });
+
+    return interaction.editReply(`✅ **${Number(montant).toLocaleString()}** ${RESOURCE_EMOJIS.argent} ajouté à **${playerName}**.`);
+  } catch (err) {
+    console.error(err);
+    return interaction.editReply(`⚠️ Erreur : ${err.message}`);
+  }
+}
 
 // =============================
 // DISCORD BOT
@@ -502,6 +615,19 @@ client.on("interactionCreate", async interaction => {
   if (interaction.commandName === "roll") {
     // ⚠️ handleRoll s'occupe déjà de deferReply + editReply
     return handleRoll(interaction);
+  }
+  // =============================
+  // /argent
+  // =============================
+  if (interaction.commandName === "argent") {
+    return handleArgent(interaction);
+  }
+
+  // =============================
+  // /add
+  // =============================
+  if (interaction.commandName === "add") {
+    return handleAdd(interaction);
   }
 
   // =============================
