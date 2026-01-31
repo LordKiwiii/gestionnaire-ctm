@@ -460,7 +460,7 @@ async function handleRoll(interaction) {
 
     const totalGains = calcTotalGains(playerRows);
 
-    // ✅ Les ressources sont stockées sur la première ligne du joueur (comme avant)
+    // ✅ Les ressources sont stockées sur la première ligne du joueur 
     await updatePlayerResources(sheets, playerRows[0].index, totalGains);
 
     const fields = Object.entries(totalGains).map(([res, val]) => ({
@@ -572,7 +572,7 @@ async function handleArgent(interaction) {
 async function handleAdd(interaction) {
   const playerName = interaction.user.username;
   const montant = interaction.options.getInteger("montant");
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply();
 
   if (!montant || montant <= 0) {
     return interaction.editReply("❌ Montant invalide. Mets un nombre entier positif.");
