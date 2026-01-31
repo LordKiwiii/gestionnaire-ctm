@@ -22,6 +22,19 @@ const commands = [
       }
     ]
   },
+  {
+    name: "remove",
+    description: "Retirer directement des pièces d'argent de ton compte",
+    options: [
+      {
+        name: "montant",
+        description: "Montant d'argent à retirer",
+        type: 4, // INTEGER
+        required: true
+      }
+    ]
+  },
+
 
   {
     name: "build",
