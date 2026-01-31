@@ -598,7 +598,7 @@ async function handleAdd(interaction) {
 async function handleRemove(interaction) {
   const playerName = interaction.user.username;
   const montant = interaction.options.getInteger("montant");
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply();
 
   if (!montant || montant <= 0) {
     return interaction.editReply("❌ Montant invalide. Mets un nombre entier positif.");
