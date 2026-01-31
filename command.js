@@ -7,6 +7,23 @@ const commands = [
     description: "Lancer la récolte de ressources"
   },
   {
+    name: "argent",
+    description: "Lancer les revenus journaliers en pièces d'argent (par ville)"
+  },
+  {
+    name: "add",
+    description: "Ajouter directement des pièces d'argent à ton compte",
+    options: [
+      {
+        name: "montant",
+        description: "Montant d'argent à ajouter",
+        type: 4, // INTEGER
+        required: true
+      }
+    ]
+  },
+
+  {
     name: "build",
     description: "Construire un bâtiment",
     options: [
