@@ -51,6 +51,60 @@ async function getSheetsClient() {
   });
   return google.sheets({ version: "v4", auth });
 }
+
+// =============================
+// STOCKAGE (COL L) – PARSE + CAP
+// =============================
+
+const STORAGE_CAP_COL = "L";
+// Ressources exclues du cap (argent illimité)
+const NO_CAP_RESOURCES = new Set(["argent"]);
+
+/**
+ * Parse les formats :
+ * - "100k" => 100000
+ * - "1.2m" => 1200000
+ * - "2M" => 2000000
+ * - "100 000" / "100,000" => 100000
+ * - "100000" => 100000
+ */
+function parseCompactNumber(input) {
+  if (input === null || input === undefined) return 0;
+
+  let s = String(input).trim().toLowerCase();
+  if (!s) return 0;
+
+  // retire espaces et séparateurs courants
+  s = s.replace(/\s/g, "").replace(/,/g, "");
+
+  // format suffixe k/m/b
+  const m = s.match(/^(-?\d+(?:\.\d+)?)([kmb])?$/i);
+  if (!m) {
+    // fallback: ne garder que chiffres (et signe - si présent)
+    const digits = parseInt(s.replace(/[^\d-]/g, ""), 10);
+    return Number.isFinite(digits) ? digits : 0;
+  }
+
+  const num = parseFloat(m[1]);
+  if (!Number.isFinite(num)) return 0;
+
+  const suffix = m[2];
+  const mult =
+    suffix === "k" ? 1_000 :
+    suffix === "m" ? 1_000_000 :
+    suffix === "b" ? 1_000_000_000 :
+    1;
+
+  return Math.trunc(num * mult);
+}
+
+function getStorageCapFromRow(row) {
+  const raw = row[idx(STORAGE_CAP_COL)];
+  const cap = parseCompactNumber(raw);
+  // cap invalide ou 0 => pas de limite
+  return cap > 0 ? cap : Infinity;
+}
+
 // =============================
 // COLONNES RESSOURCES
 // =============================
@@ -420,6 +474,8 @@ function calcTotalGains(playerRows) {
 
 async function updatePlayerResources(sheets, baseRowIndex, updates) {
   const rowNumber = 11 + baseRowIndex;
+
+  // A:N inclut L et N (donc cap + ressources + argent)
   const range = `${SHEET_NAME}!A${rowNumber}:N${rowNumber}`;
 
   const res = await sheets.spreadsheets.values.get({
@@ -428,13 +484,32 @@ async function updatePlayerResources(sheets, baseRowIndex, updates) {
   });
 
   const row = res.data.values?.[0] || [];
+  const cap = getStorageCapFromRow(row);
 
-  for (const [key, delta] of Object.entries(updates)) {
+  const applied = {}; // delta réellement appliqué
+  const final = {};   // valeur finale
+
+  for (const [key, deltaRaw] of Object.entries(updates)) {
     if (!COLS[key]) continue;
 
     const colIndex = idx(COLS[key]);
-    const cur = parseInt((row[colIndex] || "0").replace(/\D/g, "")) || 0;
-    row[colIndex] = String(cur + (parseInt(delta, 10) || 0));
+    const cur = parseCompactNumber(row[colIndex] || "0");
+    const delta = parseInt(deltaRaw, 10) || 0;
+
+    let next = cur + delta;
+
+    // Jamais négatif
+    if (next < 0) next = 0;
+
+    // Cap uniquement si ce n'est PAS une ressource exclue (argent)
+    if (!NO_CAP_RESOURCES.has(key) && Number.isFinite(cap)) {
+      next = Math.min(next, cap);
+    }
+
+    row[colIndex] = String(next);
+
+    applied[key] = next - cur;
+    final[key] = next;
   }
 
   await sheets.spreadsheets.values.update({
@@ -443,7 +518,10 @@ async function updatePlayerResources(sheets, baseRowIndex, updates) {
     valueInputOption: "USER_ENTERED",
     resource: { values: [row] }
   });
+
+  return { applied, final, cap };
 }
+
 
 async function handleRoll(interaction) {
   const playerName = interaction.user.username;
@@ -460,14 +538,23 @@ async function handleRoll(interaction) {
 
     const totalGains = calcTotalGains(playerRows);
 
-    // ✅ Les ressources sont stockées sur la première ligne du joueur 
-    await updatePlayerResources(sheets, playerRows[0].index, totalGains);
+    // ✅ Les ressources sont stockées sur la première ligne du joueur
+    const { applied, cap } = await updatePlayerResources(sheets, playerRows[0].index, totalGains);
 
-    const fields = Object.entries(totalGains).map(([res, val]) => ({
-      name: `${RESOURCE_EMOJIS[res] || ""} ${res.charAt(0).toUpperCase() + res.slice(1)}`,
-      value: `**+${Number(val).toLocaleString()}**`,
-      inline: true
-    }));
+    const fields = Object.entries(totalGains).map(([res, wanted]) => {
+      const got = applied?.[res] ?? 0; // delta réellement appliqué
+      const capped = got < wanted;
+
+      const capText = Number.isFinite(cap) ? ` (cap **${Number(cap).toLocaleString()}**)` : "";
+
+      return {
+        name: `${RESOURCE_EMOJIS[res] || ""} ${res.charAt(0).toUpperCase() + res.slice(1)}`,
+        value: capped
+          ? `**+${Number(got).toLocaleString()}**${capText}`
+          : `**+${Number(got).toLocaleString()}**`,
+        inline: true
+      };
+    });
 
     const embed = new EmbedBuilder()
       .setTitle("🎲 Récolte journalière")
@@ -482,6 +569,7 @@ async function handleRoll(interaction) {
     return interaction.editReply(`⚠️ Erreur : ${err.message}`);
   }
 }
+
 // =============================
 // ARGENT – CONFIG + UTILITAIRES + HANDLER
 // (NE MODIFIE PAS getCityLevel/hasCity existants)
