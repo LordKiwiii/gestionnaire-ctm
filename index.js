@@ -2,7 +2,6 @@
 // BOT CTM – INDEX.JS COMPLET
 // =============================
 
-const RESOURCE_KEYS = Object.keys(COLS); // ["bois","pierre",...,"argent"]
 const { google } = require("googleapis");
 const fs = require("fs");
 const path = require("path");
@@ -122,7 +121,7 @@ const COLS = {
   poterie: "C",
   argent: "N"
 };
-
+const RESOURCE_KEYS = Object.keys(COLS); // ["bois","pierre",...,"argent"]
 // =============================
 // DETECTION NIVEAU DE VILLE
 // =============================
