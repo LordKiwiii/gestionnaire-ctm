@@ -1,6 +1,19 @@
 const { REST, Routes } = require("discord.js");
 require("dotenv").config();
 
+const RESOURCE_CHOICES = [
+  { name: "Argent", value: "argent" },
+  { name: "Bois", value: "bois" },
+  { name: "Pierre", value: "pierre" },
+  { name: "Nourriture", value: "nourriture" },
+  { name: "Fer", value: "fer" },
+  { name: "Sel", value: "sel" },
+  { name: "Argile", value: "argile" },
+  { name: "Laine", value: "laine" },
+  { name: "Fourrure", value: "fourrure" },
+  { name: "Poterie", value: "poterie" }
+];
+
 const commands = [
   {
     name: "roll",
@@ -10,32 +23,68 @@ const commands = [
     name: "argent",
     description: "Lancer les revenus journaliers en pièces d'argent (par ville)"
   },
+
+  // =============================
+  // /add
+  // =============================
   {
     name: "add",
-    description: "Ajouter directement des pièces d'argent à ton compte",
+    description: "Ajouter de l'argent ou une ressource à un joueur",
     options: [
       {
         name: "montant",
-        description: "Montant d'argent à ajouter",
+        description: "Montant à ajouter",
         type: 4, // INTEGER
         required: true
+      },
+      {
+        name: "ressource",
+        description: "Ressource à ajouter (par défaut: argent)",
+        type: 3, // STRING
+        required: false,
+        choices: RESOURCE_CHOICES
+      },
+      {
+        name: "joueur",
+        description: "Joueur à modifier (par défaut: toi)",
+        type: 6, // USER
+        required: false
       }
     ]
   },
+
+  // =============================
+  // /remove
+  // =============================
   {
     name: "remove",
-    description: "Retirer directement des pièces d'argent de ton compte",
+    description: "Retirer de l'argent ou une ressource à un joueur",
     options: [
       {
         name: "montant",
-        description: "Montant d'argent à retirer",
+        description: "Montant à retirer",
         type: 4, // INTEGER
         required: true
+      },
+      {
+        name: "ressource",
+        description: "Ressource à retirer (par défaut: argent)",
+        type: 3, // STRING
+        required: false,
+        choices: RESOURCE_CHOICES
+      },
+      {
+        name: "joueur",
+        description: "Joueur à modifier (par défaut: toi)",
+        type: 6, // USER
+        required: false
       }
     ]
   },
 
-
+  // =============================
+  // /build
+  // =============================
   {
     name: "build",
     description: "Construire un bâtiment",
@@ -46,7 +95,6 @@ const commands = [
         type: 3, // STRING
         required: true,
         choices: [
-
           // ===== PRODUCTION =====
           { name: "Scierie", value: "scierie" },
           { name: "Ferme", value: "ferme" },
@@ -73,7 +121,6 @@ const commands = [
           { name: "Quartier militaire", value: "quartier_militaire" },
           { name: "Bastion militaire", value: "bastion_militaire" },
           { name: "Forteresse militaire", value: "forteresse_militaire" }
-
         ]
       }
     ]
@@ -87,10 +134,7 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
     console.log("🔁 Enregistrement des slash commands...");
 
     await rest.put(
-      Routes.applicationGuildCommands(
-        process.env.CLIENT_ID,
-        process.env.GUILD_ID
-      ),
+      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
       { body: commands }
     );
 
