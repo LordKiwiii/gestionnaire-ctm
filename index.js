@@ -769,40 +769,6 @@ async function handleRemove(interaction) {
   }
 }
 
-    // Lire la ligne ressources actuelle pour vérifier le solde
-    const baseRowIndex = playerRows[0].index;
-    const rowNumber = 11 + baseRowIndex;
-    const range = `${SHEET_NAME}!A${rowNumber}:N${rowNumber}`;
-
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range
-    });
-
-    const row = res.data.values?.[0] || [];
-    const colIndex = idx(COLS.argent);
-    const cur = parseInt((row[colIndex] || "0").toString().replace(/\D/g, "")) || 0;
-
-    if (cur < montant) {
-      return interaction.editReply(
-        `💸 Solde insuffisant : tu as **${Number(cur).toLocaleString()}** ${RESOURCE_EMOJIS.argent}, ` +
-        `tu veux retirer **${Number(montant).toLocaleString()}**.`
-      );
-    }
-
-    // On retire via updatePlayerResources avec un delta négatif
-    await updatePlayerResources(sheets, baseRowIndex, { argent: -montant });
-
-    return interaction.editReply(
-      `✅ **${Number(montant).toLocaleString()}** ${RESOURCE_EMOJIS.argent} retiré. ` +
-      `Nouveau solde : **${Number(cur - montant).toLocaleString()}** ${RESOURCE_EMOJIS.argent}.`
-    );
-
-  } catch (err) {
-    console.error(err);
-    return interaction.editReply(`⚠️ Erreur : ${err.message}`);
-  }
-}
 
 // =============================
 // DISCORD BOT
