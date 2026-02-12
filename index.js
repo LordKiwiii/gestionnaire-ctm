@@ -2,6 +2,7 @@
 // BOT CTM – INDEX.JS COMPLET
 // =============================
 
+const RESOURCE_KEYS = Object.keys(COLS); // ["bois","pierre",...,"argent"]
 const { google } = require("googleapis");
 const fs = require("fs");
 const path = require("path");
@@ -658,48 +659,115 @@ async function handleArgent(interaction) {
 }
 
 async function handleAdd(interaction) {
-  const playerName = interaction.user.username;
+  // Nouveaux paramètres:
+  // - joueur (User) optionnel
+  // - ressource (String) optionnel (défaut: "argent")
+  // - montant (Integer) requis
+  const targetUser = interaction.options.getUser("joueur") || interaction.user;
+  const targetName = targetUser.username;
+
+  const ressource = (interaction.options.getString("ressource") || "argent").toLowerCase();
   const montant = interaction.options.getInteger("montant");
+
   await interaction.deferReply();
 
   if (!montant || montant <= 0) {
     return interaction.editReply("❌ Montant invalide. Mets un nombre entier positif.");
+  }
+  if (!COLS[ressource]) {
+    return interaction.editReply(`❌ Ressource invalide: **${ressource}**. Ressources possibles: ${RESOURCE_KEYS.join(", ")}`);
   }
 
   try {
     const sheets = await getSheetsClient();
     const rows = await readSheet(sheets);
 
-    const playerRows = getPlayerRowsForRoll(rows, playerName);
+    const playerRows = getPlayerRowsForRoll(rows, targetName);
     if (!playerRows.length) {
-      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${playerName}** dans le Sheets.`);
+      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${targetName}** dans le Sheets.`);
     }
 
-    await updatePlayerResources(sheets, playerRows[0].index, { argent: montant });
+    const { applied, cap } = await updatePlayerResources(sheets, playerRows[0].index, { [ressource]: montant });
+    const realAdded = applied?.[ressource] ?? 0;
 
-    return interaction.editReply(`✅ **${Number(montant).toLocaleString()}** ${RESOURCE_EMOJIS.argent} ajouté à **${playerName}**.`);
+    const emoji = RESOURCE_EMOJIS[ressource] || "";
+    const capped = ressource !== "argent" && realAdded < montant;
+
+    return interaction.editReply(
+      capped
+        ? `✅ Ajout sur **${targetName}** : **+${Number(realAdded).toLocaleString()}** ${emoji} (cap **${Number(cap).toLocaleString()}**).`
+        : `✅ Ajout sur **${targetName}** : **+${Number(realAdded).toLocaleString()}** ${emoji}.`
+    );
   } catch (err) {
     console.error(err);
     return interaction.editReply(`⚠️ Erreur : ${err.message}`);
   }
 }
+
 async function handleRemove(interaction) {
-  const playerName = interaction.user.username;
+  const targetUser = interaction.options.getUser("joueur") || interaction.user;
+  const targetName = targetUser.username;
+
+  const ressource = (interaction.options.getString("ressource") || "argent").toLowerCase();
   const montant = interaction.options.getInteger("montant");
+
   await interaction.deferReply();
 
   if (!montant || montant <= 0) {
     return interaction.editReply("❌ Montant invalide. Mets un nombre entier positif.");
+  }
+  if (!COLS[ressource]) {
+    return interaction.editReply(`❌ Ressource invalide: **${ressource}**. Ressources possibles: ${RESOURCE_KEYS.join(", ")}`);
   }
 
   try {
     const sheets = await getSheetsClient();
     const rows = await readSheet(sheets);
 
-    const playerRows = getPlayerRowsForRoll(rows, playerName);
+    const playerRows = getPlayerRowsForRoll(rows, targetName);
     if (!playerRows.length) {
-      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${playerName}** dans le Sheets.`);
+      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${targetName}** dans le Sheets.`);
     }
+
+    // Lire la ligne ressources actuelle
+    const baseRowIndex = playerRows[0].index;
+    const rowNumber = 11 + baseRowIndex;
+    const range = `${SHEET_NAME}!A${rowNumber}:N${rowNumber}`;
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range
+    });
+
+    const row = res.data.values?.[0] || [];
+    const colIndex = idx(COLS[ressource]);
+    const cur = parseCompactNumber(row[colIndex] || "0");
+
+    if (cur < montant) {
+      const emoji = RESOURCE_EMOJIS[ressource] || "";
+      return interaction.editReply(
+        `💸 Solde insuffisant pour **${targetName}** : ` +
+        `il/elle a **${Number(cur).toLocaleString()}** ${emoji}, ` +
+        `tu veux retirer **${Number(montant).toLocaleString()}**.`
+      );
+    }
+
+    // Retirer via delta négatif
+    const { applied } = await updatePlayerResources(sheets, baseRowIndex, { [ressource]: -montant });
+    const realRemoved = Math.abs(applied?.[ressource] ?? 0);
+
+    const emoji = RESOURCE_EMOJIS[ressource] || "";
+    const newBalance = cur - realRemoved;
+
+    return interaction.editReply(
+      `✅ Retrait sur **${targetName}** : **-${Number(realRemoved).toLocaleString()}** ${emoji}. ` +
+      `Nouveau solde : **${Number(newBalance).toLocaleString()}** ${emoji}.`
+    );
+  } catch (err) {
+    console.error(err);
+    return interaction.editReply(`⚠️ Erreur : ${err.message}`);
+  }
+}
 
     // Lire la ligne ressources actuelle pour vérifier le solde
     const baseRowIndex = playerRows[0].index;
