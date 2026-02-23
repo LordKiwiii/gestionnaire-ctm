@@ -767,7 +767,191 @@ async function handleRemove(interaction) {
     return interaction.editReply(`⚠️ Erreur : ${err.message}`);
   }
 }
+// =============================
+// /ville & /ressources – OUTILS
+// =============================
 
+function prettyCityLevel(level) {
+  if (!level) return "hameau";
+  return level; // village / bourg / ville / cite
+}
+
+function titleCase(s) {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Renvoie les ressources courantes du joueur (sur la 1ère ligne du bloc joueur),
+ * + cap (col L).
+ */
+async function getPlayerResourceRow(sheets, rows, playerName) {
+  const playerRows = getPlayerRowsForRoll(rows, playerName);
+  if (!playerRows.length) return null;
+
+  const baseRowIndex = playerRows[0].index;
+  const rowNumber = 11 + baseRowIndex;
+  const range = `${SHEET_NAME}!A${rowNumber}:N${rowNumber}`;
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range
+  });
+
+  const row = res.data.values?.[0] || [];
+  const cap = getStorageCapFromRow(row);
+
+  return { row, cap, baseRowIndex };
+}
+
+/**
+ * Détecte, pour une ville (une ligne), les bâtiments :
+ * - niveau "Terminé" max
+ * - et s'il existe un niveau "En construction"
+ */
+function detectBuildingsStatus(row) {
+  const out = [];
+
+  for (const bat of Object.keys(BUILDING_COLS)) {
+    // On veut surtout les vrais bâtiments + entrepot + militaires + (optionnel) ville
+    // Si tu veux filtrer, tu peux faire une whitelist.
+    const lvlCols = BUILDING_COLS[bat];
+
+    let maxDone = 0;
+    let hasConstruction = false;
+
+    for (const [lvlStr, col] of Object.entries(lvlCols)) {
+      const lvl = parseInt(lvlStr, 10);
+      const v = (row[idx(col)] || "").toString().toLowerCase().trim();
+
+      if (!v) continue;
+      if (v.includes("terminé")) maxDone = Math.max(maxDone, lvl);
+      if (v.includes("en construction")) hasConstruction = true;
+    }
+
+    if (maxDone > 0 || hasConstruction) {
+      out.push({ bat, maxDone, hasConstruction });
+    }
+  }
+
+  // Tri: terminés desc puis alpha
+  out.sort((a, b) => (b.maxDone - a.maxDone) || a.bat.localeCompare(b.bat));
+  return out;
+}
+
+/**
+ * Handler /ressources
+ */
+async function handleRessources(interaction) {
+  const playerName = interaction.user.username;
+  await interaction.deferReply();
+
+  try {
+    const sheets = await getSheetsClient();
+    const rows = await readSheet(sheets);
+
+    const data = await getPlayerResourceRow(sheets, rows, playerName);
+    if (!data) {
+      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${playerName}** dans le Sheets.`);
+    }
+
+    const { row, cap } = data;
+
+    const fields = RESOURCE_KEYS.map((k) => {
+      const val = parseCompactNumber(row[idx(COLS[k])] || "0");
+      return {
+        name: `${RESOURCE_EMOJIS[k] || ""} ${titleCase(k)}`,
+        value: `**${Number(val).toLocaleString()}**`,
+        inline: true
+      };
+    });
+
+    const capText = Number.isFinite(cap) ? `Cap entrepôt (L) : **${Number(cap).toLocaleString()}**` : `Cap entrepôt (L) : **∞**`;
+
+    const embed = new EmbedBuilder()
+      .setTitle("📦 Ressources")
+      .setDescription(`**${playerName}**\n${capText}`)
+      .addFields(fields)
+      .setColor(0x3399ff);
+
+    return interaction.editReply({ embeds: [embed] });
+
+  } catch (err) {
+    console.error(err);
+    return interaction.editReply(`⚠️ Erreur : ${err.message}`);
+  }
+}
+
+/**
+ * Handler /ville
+ * Liste les villes (col S) + niveau de ville + bâtiments détectés.
+ */
+async function handleVille(interaction) {
+  const playerName = interaction.user.username;
+  await interaction.deferReply();
+
+  try {
+    const sheets = await getSheetsClient();
+    const rows = await readSheet(sheets);
+
+    const cities = getPlayerCities(rows, playerName);
+    if (!cities.length) {
+      return interaction.editReply(`👋 Aucune ville trouvée pour **${playerName}** dans le Sheets.`);
+    }
+
+    // Construire un "bloc" par ville (max 25 fields dans un embed)
+    // On va faire 1 field par ville (ok jusqu'à 25 villes).
+    const fields = [];
+
+    for (const c of cities) {
+      const level = prettyCityLevel(getCityLevel(c.data));
+      const tierArgent = getCityTierForArgent(c.data); // utile si tu veux afficher le tier argent
+      const b = detectBuildingsStatus(c.data);
+
+      // Option: ne montrer que prod + entrepot + militaire
+      const ALLOWED = new Set([
+        "scierie","ferme","carriere_pierre","atelier_tanneur","paturage","carriere_argile","mine_fer","mine_sel","atelier_poterie",
+        "entrepot",
+        "camp_militaire","caserne_militaire","quartier_militaire","bastion_militaire","forteresse_militaire"
+      ]);
+
+      const lines = b
+        .filter(x => ALLOWED.has(x.bat))
+        .map(x => {
+          const done = x.maxDone > 0 ? `✅ ${x.maxDone}` : `—`;
+          const build = x.hasConstruction ? ` 🏗️` : "";
+          return `• **${x.bat}** : ${done}${build}`;
+        });
+
+      const value =
+        `Niveau ville: **${level}** (argent: **${tierArgent}**)\n` +
+        (lines.length ? lines.join("\n") : "_Aucun bâtiment détecté_");
+
+      fields.push({
+        name: `🏛️ ${c.cityName}`,
+        value,
+        inline: false
+      });
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle("🗺️ Villes & bâtiments")
+      .setDescription(`**${playerName}** possède **${cities.length}** ville(s).`)
+      .addFields(fields.slice(0, 25))
+      .setColor(0x8e44ad);
+
+    // Si >25 villes, on prévient (Discord limite)
+    if (cities.length > 25) {
+      embed.setFooter({ text: `Affichage limité à 25 villes (Discord limit).` });
+    }
+
+    return interaction.editReply({ embeds: [embed] });
+
+  } catch (err) {
+    console.error(err);
+    return interaction.editReply(`⚠️ Erreur : ${err.message}`);
+  }
+}
 
 // =============================
 // DISCORD BOT
@@ -808,7 +992,19 @@ client.on("interactionCreate", async interaction => {
   if (interaction.commandName === "add") {
     return handleAdd(interaction);
   }
+    // =============================
+  // /ressources
+  // =============================
+  if (interaction.commandName === "ressources") {
+    return handleRessources(interaction);
+  }
 
+  // =============================
+  // /ville
+  // =============================
+  if (interaction.commandName === "ville") {
+    return handleVille(interaction);
+  }
   // =============================
   // /build
   // =============================
