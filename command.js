@@ -25,6 +25,22 @@ const commands = [
   },
 
   // =============================
+  // /ressources
+  // =============================
+  {
+    name: "ressources",
+    description: "Afficher les ressources du joueur"
+  },
+
+  // =============================
+  // /ville
+  // =============================
+  {
+    name: "ville",
+    description: "Afficher les villes du joueur ainsi que ses bâtiments et niveaux"
+  },
+
+  // =============================
   // /add
   // =============================
   {
