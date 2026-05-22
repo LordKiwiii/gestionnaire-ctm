@@ -572,7 +572,6 @@ async function handleRoll(interaction) {
 
 // =============================
 // ARGENT – CONFIG + UTILITAIRES + HANDLER
-// (NE MODIFIE PAS getCityLevel/hasCity existants)
 // =============================
 
 const ARGENT_CONFIG = {
@@ -952,7 +951,93 @@ async function handleVille(interaction) {
     return interaction.editReply(`⚠️ Erreur : ${err.message}`);
   }
 }
+// =============================
+// /sell
+// Retire 500 de chaque ressource
+// Ajoute 8125 argent
+// =============================
 
+async function handleSell(interaction) {
+  const targetUser = interaction.options.getUser("joueur") || interaction.user;
+  const targetName = targetUser.username;
+
+  await interaction.deferReply();
+
+  try {
+    const sheets = await getSheetsClient();
+    const rows = await readSheet(sheets);
+
+    const playerRows = getPlayerRowsForRoll(rows, targetName);
+
+    if (!playerRows.length) {
+      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${targetName}** dans le Sheets.`);
+    }
+
+    const baseRowIndex = playerRows[0].index;
+    const rowNumber = 11 + baseRowIndex;
+
+    const range = `${SHEET_NAME}!A${rowNumber}:N${rowNumber}`;
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range
+    });
+
+    const row = res.data.values?.[0] || [];
+
+    // Ressources à retirer
+    const resourcesToRemove = [
+      "bois",
+      "pierre",
+      "nourriture",
+      "fer",
+      "sel",
+      "argile",
+      "laine",
+      "fourrure",
+      "poterie"
+    ];
+
+    // Vérification
+    for (const r of resourcesToRemove) {
+      const current = parseCompactNumber(row[idx(COLS[r])] || "0");
+
+      if (current < 500) {
+        return interaction.editReply(
+          `❌ **${targetName}** n'a pas assez de **${r}**.\n` +
+          `Requis : **500** | Actuel : **${Number(current).toLocaleString()}**`
+        );
+      }
+    }
+
+    // Prépare les modifications
+    const updates = {};
+
+    for (const r of resourcesToRemove) {
+      updates[r] = -500;
+    }
+
+    updates.argent = 8125;
+
+    // Application
+    await updatePlayerResources(sheets, baseRowIndex, updates);
+
+    const embed = new EmbedBuilder()
+      .setTitle("💱 Vente de ressources")
+      .setDescription(
+        `**${targetName}** a vendu :\n` +
+        `• 500 de chaque ressource\n\n` +
+        `Gain : **+8 125** 💰`
+      )
+      .setColor(0x2ecc71);
+
+    return interaction.editReply({ embeds: [embed] });
+
+  } catch (err) {
+    console.error(err);
+    return interaction.editReply(`⚠️ Erreur : ${err.message}`);
+  }
+}
 // =============================
 // DISCORD BOT
 // =============================
@@ -997,6 +1082,12 @@ client.on("interactionCreate", async interaction => {
   // =============================
   if (interaction.commandName === "ressources") {
     return handleRessources(interaction);
+  }
+  // =============================
+  // /sell
+  // =============================
+  if (interaction.commandName === "sell") {
+    return handleSell(interaction);
   }
 
   // =============================
