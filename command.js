@@ -31,7 +31,19 @@ const commands = [
     name: "ressources",
     description: "Afficher les ressources du joueur"
   },
-
+  
+  {
+    name: "sell",
+    description: "Vend 500 de chaque ressource contre 8125 argent",
+    options: [
+      {
+        name: "joueur",
+        description: "Joueur cible",
+        type: 6,
+        required: false
+      }
+    ]
+  }
   // =============================
   // /ville
   // =============================
