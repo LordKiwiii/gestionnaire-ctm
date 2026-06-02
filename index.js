@@ -131,12 +131,13 @@ function getCityLevel(row) {
   if (row[idx("BA")]) return "ville";
   if (row[idx("AN")]) return "bourg";
   if (row[idx("AC")]) return "village";
+  if (row[idx("V")]) return "hameau";
   return null;
 }
 
 function hasCity(row, required) {
   if (!required) return true;
-  const order = ["village", "bourg", "ville", "cite"];
+  const order = ["hameau", "village", "bourg", "ville", "cite"];
   return order.indexOf(getCityLevel(row)) >= order.indexOf(required);
 }
 
@@ -176,44 +177,44 @@ const BUILD_COSTS = {
 
   // ===== PRODUCTION =====
   scierie: {
-    1: { costs: { argent: 500 }, requires: "village" },
+    1: { costs: { argent: 500 }, requires: "hameau" },
     2: { costs: { argent: 1000, bois: 500, nourriture: 500, pierre: 500 }, requires: "village" },
-    3: { costs: { argent: 1500, bois: 1000, nourriture: 1000, pierre: 1000, argile: 500 }, requires: "village" },
+    3: { costs: { argent: 1500, bois: 1000, nourriture: 1000, pierre: 1000, argile: 500 }, requires: "bourg" },
     4: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1500, argile: 1000, fer: 500 }, requires: "ville" },
-    5: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 2000, argile: 1500, fer: 1000 }, requires: "ville" }
+    5: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 2000, argile: 1500, fer: 1000 }, requires: "cite" }
   },
 
   ferme: {
-    1: { costs: { argent: 500, bois: 400 }, requires: "village" },
+    1: { costs: { argent: 500, bois: 400 }, requires: "hameau" },
     2: { costs: { argent: 1200, bois: 800, nourriture: 700, pierre: 600 }, requires: "village" },
-    3: { costs: { argent: 1800, bois: 1400, nourriture: 1300, pierre: 1200, laine: 500 }, requires: "village" },
+    3: { costs: { argent: 1800, bois: 1400, nourriture: 1300, pierre: 1200, laine: 500 }, requires: "bourg" },
     4: { costs: { argent: 2400, bois: 2000, nourriture: 1900, pierre: 1800, laine: 1100, sel: 400, poterie: 400 }, requires: "ville" },
-    5: { costs: { argent: 3000, bois: 2600, nourriture: 2500, pierre: 2400, laine: 1700, sel: 1000, poterie: 1000 }, requires: "ville" }
+    5: { costs: { argent: 3000, bois: 2600, nourriture: 2500, pierre: 2400, laine: 1700, sel: 1000, poterie: 1000 }, requires: "cite" }
   },
   carriere_pierre: {
     1: { costs: { argent: 1500, bois: 1000, nourriture: 1000 }, requires: "village" },
-    2: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, argile: 500 }, requires: "village" },
+    2: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, argile: 500 }, requires: "bourg" },
     3: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, argile: 1000, fer: 500 }, requires: "ville" },
-    4: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, argile: 1500, fer: 1000 }, requires: "ville" }
+    4: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, argile: 1500, fer: 1000 }, requires: "cite" }
   },
 
   atelier_tanneur: {
     1: { costs: { argent: 1500, bois: 1000, nourriture: 1000, pierre: 600 }, requires: "village" },
-    2: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1500, laine: 500 }, requires: "village" },
+    2: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1500, laine: 500 }, requires: "bourg" },
     3: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, laine: 1000, fer: 500, sel: 500 }, requires: "ville" },
-    4: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, argile: 1500, fer: 1000, sel: 1000 }, requires: "ville" }
+    4: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, argile: 1500, fer: 1000, sel: 1000 }, requires: "cite" }
   },
 
   paturage: {
-    1: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, fourrure: 1000 }, requires: "village" },
+    1: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, fourrure: 1000 }, requires: "bourg" },
     2: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, fourrure: 1500, fer: 500, sel: 500, laine: 500 }, requires: "ville" },
-    3: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, fer: 1000, sel: 1000, laine: 1000 }, requires: "ville" }
+    3: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, fer: 1000, sel: 1000, laine: 1000 }, requires: "cite" }
   },
 
   carriere_argile: {
-    1: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, fourrure: 500 }, requires: "village" },
+    1: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, fourrure: 500 }, requires: "bourg" },
     2: { costs: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 1000, fer: 500 }, requires: "ville" },
-    3: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000 }, requires: "ville" }
+    3: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000 }, requires: "cite" }
   },
   mine_fer: {
     1: { costs: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 1000 }, requires: "ville" },
