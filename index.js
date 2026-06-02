@@ -1100,11 +1100,10 @@ client.on("interactionCreate", async interaction => {
   // =============================
   // /build
   // =============================
-  if (interaction.commandName !== "build") return;
+ if (interaction.commandName === "build") {
+  await interaction.deferReply({ flags: 64 });
 
   try {
-    await interaction.deferReply();
-
     const building = interaction.options.getString("batiment");
     const player = interaction.user.username;
 
@@ -1117,23 +1116,14 @@ client.on("interactionCreate", async interaction => {
 
     const cities = getPlayerCities(rows, player);
 
-    console.log("JOUEUR:", player);
-    console.log(
-      "LIGNES TROUVÉES:",
-      cities.map(c => ({
-        ligne: c.index + 11,
-        ville: c.cityName
-      }))
-    );
-
     if (!cities.length) {
       return interaction.editReply("❌ Joueur introuvable");
     }
 
     const resourceCity = cities[0];
-    const resourceRow = [...resourceCity.data];
-
     const buildCity = cities[cities.length - 1];
+
+    const resourceRow = [...resourceCity.data];
     const row = [...buildCity.data];
 
     const lvl = nextLevel(row, building);
@@ -1141,13 +1131,9 @@ client.on("interactionCreate", async interaction => {
 
     if (!cfg) return interaction.editReply("🏗️ Niveau maximum atteint");
     if (!hasCity(row, cfg.requires)) return interaction.editReply("🏛️ Niveau insuffisant");
-
-    if (!canAfford(resourceRow, cfg.costs)) {
-      return interaction.editReply("💸 Ressources insuffisantes");
-    }
+    if (!canAfford(resourceRow, cfg.costs)) return interaction.editReply("💸 Ressources insuffisantes");
 
     deduct(resourceRow, cfg.costs);
-
     row[idx(BUILDING_COLS[building][lvl])] = "En construction";
 
     rows[resourceCity.index] = resourceRow;
@@ -1160,21 +1146,23 @@ client.on("interactionCreate", async interaction => {
       resource: { values: rows }
     });
 
-    await interaction.editReply(
+    return interaction.editReply(
       `🏗️ **${building} niveau ${lvl} lancé dans ${buildCity.cityName} !**`
     );
 
   } catch (err) {
-    console.error("ERREUR BUILD:", err);
+  console.error("ERREUR BUILD:", err);
 
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply("❌ Erreur interne");
-    } else {
-      await interaction.reply({ content: "❌ Erreur interne", ephemeral: true });
-    }
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply("❌ Erreur interne");
   }
-});
 
+  return interaction.reply({
+    content: "❌ Erreur interne",
+    flags: 64
+  });
+ }
+}
 
 
 client.login(process.env.DISCORD_TOKEN);
