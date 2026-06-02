@@ -1162,7 +1162,7 @@ client.on("interactionCreate", async interaction => {
     flags: 64
   });
  }
-}
+});
 
 
 client.login(process.env.DISCORD_TOKEN);
