@@ -1100,69 +1100,71 @@ client.on("interactionCreate", async interaction => {
   // =============================
   // /build
   // =============================
- if (interaction.commandName === "build") {
-  await interaction.deferReply({ flags: 64 });
 
-  try {
-    const building = interaction.options.getString("batiment");
-    const player = interaction.user.username;
+  if (interaction.commandName === "build") {
+    await interaction.deferReply({ flags: 64 });
 
-    const sheets = await getSheetsClient();
+    try {
+      const building = interaction.options.getString("batiment");
+      const player = interaction.user.username;
 
-    const rows = (await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A11:ZZ`
-    })).data.values || [];
+      const sheets = await getSheetsClient();
 
-    const cities = getPlayerCities(rows, player);
+      const rows = (await sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID,
+        range: `${SHEET_NAME}!A11:ZZ`
+      })).data.values || [];
 
-    if (!cities.length) {
-      return interaction.editReply("❌ Joueur introuvable");
+      const cities = getPlayerCities(rows, player);
+
+      if (!cities.length) {
+        return interaction.editReply("❌ Joueur introuvable");
+      }
+
+      const resourceCity = cities[0];
+      const buildCity = cities[cities.length - 1];
+
+      const resourceRow = [...resourceCity.data];
+      const row = [...buildCity.data];
+
+      const lvl = nextLevel(row, building);
+      const cfg = BUILD_COSTS[building]?.[lvl];
+
+      if (!cfg) return interaction.editReply("🏗️ Niveau maximum atteint");
+      if (!hasCity(row, cfg.requires)) return interaction.editReply("🏛️ Niveau insuffisant");
+      if (!canAfford(resourceRow, cfg.costs)) return interaction.editReply("💸 Ressources insuffisantes");
+
+      deduct(resourceRow, cfg.costs);
+      row[idx(BUILDING_COLS[building][lvl])] = "En construction";
+
+      rows[resourceCity.index] = resourceRow;
+      rows[buildCity.index] = row;
+
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SHEET_ID,
+        range: `${SHEET_NAME}!A11:ZZ`,
+        valueInputOption: "USER_ENTERED",
+        resource: { values: rows }
+      });
+
+      return interaction.editReply(
+        `🏗️ **${building} niveau ${lvl} lancé dans ${buildCity.cityName} !**`
+      );
+
+    } catch (err) {
+      console.error("ERREUR BUILD:", err);
+
+      if (interaction.deferred || interaction.replied) {
+        return interaction.editReply("❌ Erreur interne");
+      }
+
+      return interaction.reply({
+        content: "❌ Erreur interne",
+        flags: 64
+      });
     }
+  } // ferme if build
 
-    const resourceCity = cities[0];
-    const buildCity = cities[cities.length - 1];
-
-    const resourceRow = [...resourceCity.data];
-    const row = [...buildCity.data];
-
-    const lvl = nextLevel(row, building);
-    const cfg = BUILD_COSTS[building]?.[lvl];
-
-    if (!cfg) return interaction.editReply("🏗️ Niveau maximum atteint");
-    if (!hasCity(row, cfg.requires)) return interaction.editReply("🏛️ Niveau insuffisant");
-    if (!canAfford(resourceRow, cfg.costs)) return interaction.editReply("💸 Ressources insuffisantes");
-
-    deduct(resourceRow, cfg.costs);
-    row[idx(BUILDING_COLS[building][lvl])] = "En construction";
-
-    rows[resourceCity.index] = resourceRow;
-    rows[buildCity.index] = row;
-
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A11:ZZ`,
-      valueInputOption: "USER_ENTERED",
-      resource: { values: rows }
-    });
-
-    return interaction.editReply(
-      `🏗️ **${building} niveau ${lvl} lancé dans ${buildCity.cityName} !**`
-    );
-
-  } catch (err) {
-  console.error("ERREUR BUILD:", err);
-
-  if (interaction.deferred || interaction.replied) {
-    return interaction.editReply("❌ Erreur interne");
-  }
-
-  return interaction.reply({
-    content: "❌ Erreur interne",
-    flags: 64
-  });
- }
-});
-
+}); // ferme client.on("interactionCreate")
 
 client.login(process.env.DISCORD_TOKEN);
