@@ -35,6 +35,77 @@ const SHEET_NAME = "Rapport";
 const PLAYER_NAME_COL = "O";
 
 // =============================
+// PERMISSIONS
+// =============================
+
+const MJ_ROLE_NAME = "Maîtres du Jeu";
+
+function hasMJRole(interaction) {
+  const member = interaction.member;
+  if (!member) return false;
+  // Les admins du serveur passent toujours
+  if (member.permissions.has("Administrator")) return true;
+  return member.roles.cache.some(r => r.name === MJ_ROLE_NAME);
+}
+
+// =============================
+// COOLDOWNS – COLONNES CI (roll) et CJ (argent)
+// =============================
+
+const COOLDOWN_ROLL_COL  = "CI"; // date du dernier /roll
+const COOLDOWN_ARGENT_COL = "CJ"; // date du dernier /argent
+const TIMEZONE = "Europe/Paris";
+
+/**
+ * Retourne la date actuelle au format "YYYY-MM-DD" en heure de Paris.
+ */
+function getTodayParis() {
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date()).split("/").reverse().join("-");
+  // "dd/mm/yyyy" → ["yyyy","mm","dd"] → "yyyy-mm-dd"
+}
+
+/**
+ * Lit la valeur de cooldown d'un joueur dans la feuille.
+ * Renvoie la chaîne stockée (ex: "2024-06-01") ou null.
+ */
+async function getCooldown(sheets, rowNumber, col) {
+  const range = `${SHEET_NAME}!${col}${rowNumber}`;
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range
+  });
+  return res.data.values?.[0]?.[0] || null;
+}
+
+/**
+ * Écrit la date du jour dans la colonne cooldown du joueur.
+ */
+async function setCooldown(sheets, rowNumber, col) {
+  const range = `${SHEET_NAME}!${col}${rowNumber}`;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SHEET_ID,
+    range,
+    valueInputOption: "USER_ENTERED",
+    resource: { values: [[getTodayParis()]] }
+  });
+}
+
+/**
+ * Vérifie si le joueur a déjà utilisé la commande aujourd'hui.
+ * Retourne true si en cooldown, false sinon.
+ */
+async function isOnCooldown(sheets, rowNumber, col) {
+  const stored = await getCooldown(sheets, rowNumber, col);
+  if (!stored) return false;
+  return stored.trim() === getTodayParis();
+}
+
+// =============================
 // UTILITAIRES
 // =============================
 
@@ -57,51 +128,32 @@ async function getSheetsClient() {
 // =============================
 
 const STORAGE_CAP_COL = "L";
-// Ressources exclues du cap (argent illimité)
 const NO_CAP_RESOURCES = new Set(["argent"]);
 
-/**
- * Parse les formats :
- * - "100k" => 100000
- * - "1.2m" => 1200000
- * - "2M" => 2000000
- * - "100 000" / "100,000" => 100000
- * - "100000" => 100000
- */
 function parseCompactNumber(input) {
   if (input === null || input === undefined) return 0;
-
   let s = String(input).trim().toLowerCase();
   if (!s) return 0;
-
-  // retire espaces et séparateurs courants
   s = s.replace(/\s/g, "").replace(/,/g, "");
-
-  // format suffixe k/m/b
   const m = s.match(/^(-?\d+(?:\.\d+)?)([kmb])?$/i);
   if (!m) {
-    // fallback: ne garder que chiffres (et signe - si présent)
     const digits = parseInt(s.replace(/[^\d-]/g, ""), 10);
     return Number.isFinite(digits) ? digits : 0;
   }
-
   const num = parseFloat(m[1]);
   if (!Number.isFinite(num)) return 0;
-
   const suffix = m[2];
   const mult =
     suffix === "k" ? 1_000 :
     suffix === "m" ? 1_000_000 :
     suffix === "b" ? 1_000_000_000 :
     1;
-
   return Math.trunc(num * mult);
 }
 
 function getStorageCapFromRow(row) {
   const raw = row[idx(STORAGE_CAP_COL)];
   const cap = parseCompactNumber(raw);
-  // cap invalide ou 0 => pas de limite
   return cap > 0 ? cap : Infinity;
 }
 
@@ -121,7 +173,8 @@ const COLS = {
   poterie: "C",
   argent: "N"
 };
-const RESOURCE_KEYS = Object.keys(COLS); // ["bois","pierre",...,"argent"]
+const RESOURCE_KEYS = Object.keys(COLS);
+
 // =============================
 // DETECTION NIVEAU DE VILLE
 // =============================
@@ -155,27 +208,23 @@ const BUILDING_COLS = {
   mine_fer: { 1: "BJ", 2: "CA" },
   mine_sel: { 1: "BI", 2: "BZ" },
   atelier_poterie: { 1: "BK", 2: "CB" },
-
   entrepot: { 1: "W", 2: "AD", 3: "AO", 4: "BB", 5: "BS" },
-
   camp_militaire: { 1: "Z", 2: "AA", 3: "AB" },
   caserne_militaire: { 1: "AJ", 2: "AK", 3: "AL" },
   quartier_militaire: { 1: "AV", 2: "AW", 3: "AX" },
   bastion_militaire: { 1: "BL", 2: "BM", 3: "BN" },
   forteresse_militaire: { 1: "CC", 2: "CD", 3: "CE" },
-
   village: { 1: "AC" },
   bourg: { 1: "AN" },
   ville: { 1: "BA" },
   cite: { 1: "BR" }
 };
+
 // =============================
 // COUTS DES BATIMENTS
 // =============================
 
 const BUILD_COSTS = {
-
-  // ===== PRODUCTION =====
   scierie: {
     1: { costs: { argent: 500 }, requires: "hameau" },
     2: { costs: { argent: 1000, bois: 500, nourriture: 500, pierre: 500 }, requires: "village" },
@@ -183,7 +232,6 @@ const BUILD_COSTS = {
     4: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1500, argile: 1000, fer: 500 }, requires: "ville" },
     5: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 2000, argile: 1500, fer: 1000 }, requires: "cite" }
   },
-
   ferme: {
     1: { costs: { argent: 500, bois: 400 }, requires: "hameau" },
     2: { costs: { argent: 1200, bois: 800, nourriture: 700, pierre: 600 }, requires: "village" },
@@ -197,20 +245,17 @@ const BUILD_COSTS = {
     3: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, argile: 1000, fer: 500 }, requires: "ville" },
     4: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, argile: 1500, fer: 1000 }, requires: "cite" }
   },
-
   atelier_tanneur: {
     1: { costs: { argent: 1500, bois: 1000, nourriture: 1000, pierre: 600 }, requires: "village" },
     2: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1500, laine: 500 }, requires: "bourg" },
     3: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, laine: 1000, fer: 500, sel: 500 }, requires: "ville" },
     4: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, argile: 1500, fer: 1000, sel: 1000 }, requires: "cite" }
   },
-
   paturage: {
     1: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, fourrure: 1000 }, requires: "bourg" },
     2: { costs: { argent: 2500, bois: 2000, nourriture: 2000, pierre: 1500, fourrure: 1500, fer: 500, sel: 500, laine: 500 }, requires: "ville" },
     3: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, fer: 1000, sel: 1000, laine: 1000 }, requires: "cite" }
   },
-
   carriere_argile: {
     1: { costs: { argent: 2000, bois: 1500, nourriture: 1500, pierre: 1000, fourrure: 500 }, requires: "bourg" },
     2: { costs: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 1000, fer: 500 }, requires: "ville" },
@@ -220,20 +265,14 @@ const BUILD_COSTS = {
     1: { costs: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 1000 }, requires: "ville" },
     2: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000 }, requires: "cite" }
   },
-
   mine_sel: {
     1: { costs: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 1000, fer: 500 }, requires: "ville" },
     2: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000 }, requires: "cite" }
   },
-
   atelier_poterie: {
     1: { costs: { argent: 2500, nourriture: 2000, pierre: 1500, fourrure: 1500, argile: 2000, laine: 500 }, requires: "ville" },
     2: { costs: { argent: 3000, bois: 2500, nourriture: 2500, pierre: 2000, fourrure: 1500, argile: 1500, fer: 1000, laine: 1000 }, requires: "cite" }
   },
-
-
-
-  // ===== ENTREPOT =====
   entrepot: {
     1: { costs: { argent: 2000, bois: 1000, pierre: 1000, argile: 1000 } },
     2: { costs: { argent: 4000, bois: 3000, pierre: 3000, argile: 3000 } },
@@ -241,44 +280,37 @@ const BUILD_COSTS = {
     4: { costs: { argent: 8000, bois: 7000, pierre: 7000, argile: 7000 } },
     5: { costs: { argent: 10000, bois: 9000, pierre: 9000, argile: 9000 } }
   },
-
-  // ===== VILLES =====
   village: { 1: { costs: { argent: 4500, bois: 3000, nourriture: 3000 } } },
   bourg: { 1: { costs: { argent: 6000, bois: 5000, nourriture: 5000, pierre: 2500, fourrure: 2500 } } },
   ville: { 1: { costs: { argent: 9500, bois: 7000, nourriture: 7000, pierre: 5000, fourrure: 5000, argile: 2500, laine: 2500 } } },
   cite: { 1: { costs: { argent: 12500, bois: 10000, nourriture: 10000, pierre: 6000, fourrure: 6000, argile: 6000, laine: 4500, poterie: 3500, fer: 3500, sel: 3500 } } },
-
-  // ===== MILITAIRE =====
   camp_militaire: {
     1: { costs: { argent: 1000, bois: 500, nourriture: 500 } },
     2: { costs: { argent: 500, bois: 500, pierre: 500, nourriture: 1000 } },
     3: { costs: { argent: 1000, bois: 1000, pierre: 1000, nourriture: 1500, argile: 1500, laine: 1500 } }
   },
-
   caserne_militaire: {
     1: { costs: { argent: 2000, bois: 1000, nourriture: 1000, pierre: 1000, fourrure: 1000 } },
     2: { costs: { argent: 1500, bois: 1500, pierre: 1500, nourriture: 2000 } },
     3: { costs: { argent: 2000, bois: 2000, pierre: 2000, nourriture: 2500, argile: 2000, laine: 2000 } }
   },
   quartier_militaire: {
-  1: { costs: { argent: 3500, bois: 2000, nourriture: 2000, pierre: 2000, fourrure: 2000, laine: 1000, argile: 1000 } },
-  2: { costs: { argent: 2500, bois: 2500, pierre: 2500, nourriture: 3000 } },
-  3: { costs: { argent: 3000, bois: 3000, pierre: 3000, nourriture: 3500, argile: 2500, laine: 2500 } }
+    1: { costs: { argent: 3500, bois: 2000, nourriture: 2000, pierre: 2000, fourrure: 2000, laine: 1000, argile: 1000 } },
+    2: { costs: { argent: 2500, bois: 2500, pierre: 2500, nourriture: 3000 } },
+    3: { costs: { argent: 3000, bois: 3000, pierre: 3000, nourriture: 3500, argile: 2500, laine: 2500 } }
   },
-
   bastion_militaire: {
     1: { costs: { argent: 5000, bois: 3500, nourriture: 3500, pierre: 3600, fourrure: 3600, laine: 2500, argile: 2500, fer: 1500, sel: 1500, poterie: 1500 } },
     2: { costs: { argent: 3500, bois: 3500, pierre: 3500, nourriture: 4000 } },
     3: { costs: { argent: 4000, bois: 4000, pierre: 4000, nourriture: 4500, argile: 3000, laine: 3000 } }
   },
-
   forteresse_militaire: {
     1: { costs: { argent: 9000, bois: 4500, nourriture: 4500, pierre: 4000, fourrure: 4000, laine: 3000, argile: 3000, fer: 2500, sel: 2500, poterie: 2500 } },
     2: { costs: { argent: 4500, bois: 4500, pierre: 4500, nourriture: 5000 } },
     3: { costs: { argent: 5000, bois: 5000, pierre: 5000, nourriture: 5500, argile: 3500, laine: 3500 } }
-}
-
+  }
 };
+
 // =============================
 // OUTILS BUILD
 // =============================
@@ -300,12 +332,10 @@ function deduct(row, costs) {
 function nextLevel(row, key) {
   for (const lvl of Object.keys(BUILDING_COLS[key])) {
     const cell = row[idx(BUILDING_COLS[key][lvl])] || "";
-
     if (cell.toString().trim() === "") {
       return parseInt(lvl);
     }
   }
-
   return null;
 }
 
@@ -315,41 +345,24 @@ function nextLevel(row, key) {
 
 function getPlayerCities(rows, player) {
   const cities = [];
-
   let lastPlayer = null;
-
   const cleanPlayer = player.trim();
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-
     let sheetPlayer = (row[idx(PLAYER_NAME_COL)] || "").toString().trim();
-
-    // Si cellule vide → fusion → on reprend la précédente
-    if (sheetPlayer === "" && lastPlayer) {
-      sheetPlayer = lastPlayer;
-    }
-
-    if (sheetPlayer !== "") {
-      lastPlayer = sheetPlayer;
-    }
-
+    if (sheetPlayer === "" && lastPlayer) sheetPlayer = lastPlayer;
+    if (sheetPlayer !== "") lastPlayer = sheetPlayer;
     const cityName = (row[idx("S")] || "").toString().trim();
-
     if (sheetPlayer === cleanPlayer && cityName !== "") {
-      cities.push({
-        index: i,
-        data: row,
-        cityName
-      });
+      cities.push({ index: i, data: row, cityName });
     }
   }
-
   return cities;
 }
+
 // =============================
-// ROLL – CONFIG + UTILITAIRES + HANDLER
-// (repris de l'ancien code, adapté à idx())
+// ROLL – CONFIG
 // =============================
 
 const LEVEL_CONFIG = {
@@ -403,45 +416,30 @@ async function readSheet(sheets) {
   return res.data.values || [];
 }
 
-/**
- * ⚠️ Important: le roll doit fonctionner sur "toutes les lignes du joueur"
- * (y compris les lignes vides / 2e ligne de ville).
- * On reprend la logique de ton ancien getPlayerCities() :
- * - on trouve la première ligne du joueur
- * - puis on prend TOUTES les lignes suivantes jusqu'au prochain joueur (col O non vide et différent)
- */
 function getPlayerRowsForRoll(rows, playerName) {
   const out = [];
   let found = false;
 
   for (let i = 0; i < rows.length; i++) {
     const cell = rows[i][idx(PLAYER_NAME_COL)];
-
     if (cell && cell.trim() === playerName.trim()) {
       found = true;
       out.push({ index: i, data: rows[i] });
       continue;
     }
-
     if (found) {
-      // stop dès qu'on rencontre un autre joueur (cellule col O non vide)
       const nextPlayer = cell && cell.trim() !== "";
       if (nextPlayer) break;
-
       out.push({ index: i, data: rows[i] });
     }
   }
-
   return out;
 }
 
 function detectBuildingLevels(row) {
   const levels = {};
-
   for (const [bat, lvlCols] of Object.entries(BUILDING_COLS)) {
-    // On ignore les "bâtiments visuels" qui n'ont pas de ressource associée
     if (!BUILD_RESOURCE[bat]) continue;
-
     let max = 0;
     for (const [lvl, col] of Object.entries(lvlCols)) {
       const val = row[idx(col)];
@@ -451,16 +449,13 @@ function detectBuildingLevels(row) {
     }
     levels[bat] = max;
   }
-
   return levels;
 }
 
 function calcTotalGains(playerRows) {
   const totals = {};
-
   for (const city of playerRows) {
     const lvls = detectBuildingLevels(city.data);
-
     for (const [bat, lvl] of Object.entries(lvls)) {
       if (lvl > 0) {
         const ressource = BUILD_RESOURCE[bat];
@@ -469,14 +464,11 @@ function calcTotalGains(playerRows) {
       }
     }
   }
-
   return totals;
 }
 
 async function updatePlayerResources(sheets, baseRowIndex, updates) {
   const rowNumber = 11 + baseRowIndex;
-
-  // A:N inclut L et N (donc cap + ressources + argent)
   const range = `${SHEET_NAME}!A${rowNumber}:N${rowNumber}`;
 
   const res = await sheets.spreadsheets.values.get({
@@ -486,29 +478,20 @@ async function updatePlayerResources(sheets, baseRowIndex, updates) {
 
   const row = res.data.values?.[0] || [];
   const cap = getStorageCapFromRow(row);
-
-  const applied = {}; // delta réellement appliqué
-  const final = {};   // valeur finale
+  const applied = {};
+  const final = {};
 
   for (const [key, deltaRaw] of Object.entries(updates)) {
     if (!COLS[key]) continue;
-
     const colIndex = idx(COLS[key]);
     const cur = parseCompactNumber(row[colIndex] || "0");
     const delta = parseInt(deltaRaw, 10) || 0;
-
     let next = cur + delta;
-
-    // Jamais négatif
     if (next < 0) next = 0;
-
-    // Cap uniquement si ce n'est PAS une ressource exclue (argent)
     if (!NO_CAP_RESOURCES.has(key) && Number.isFinite(cap)) {
       next = Math.min(next, cap);
     }
-
     row[colIndex] = String(next);
-
     applied[key] = next - cur;
     final[key] = next;
   }
@@ -523,6 +506,9 @@ async function updatePlayerResources(sheets, baseRowIndex, updates) {
   return { applied, final, cap };
 }
 
+// =============================
+// /roll
+// =============================
 
 async function handleRoll(interaction) {
   const playerName = interaction.user.username;
@@ -537,17 +523,25 @@ async function handleRoll(interaction) {
       return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${playerName}** dans le Sheets.`);
     }
 
-    const totalGains = calcTotalGains(playerRows);
+    // Vérification cooldown
+    const rowNumber = 11 + playerRows[0].index;
+    const onCooldown = await isOnCooldown(sheets, rowNumber, COOLDOWN_ROLL_COL);
+    if (onCooldown) {
+      return interaction.editReply(
+        `⏳ **${playerName}**, tu as déjà récolté aujourd'hui !\nReviens demain à **minuit (heure de Paris)**.`
+      );
+    }
 
-    // ✅ Les ressources sont stockées sur la première ligne du joueur
+    const totalGains = calcTotalGains(playerRows);
     const { applied, cap } = await updatePlayerResources(sheets, playerRows[0].index, totalGains);
 
+    // Enregistrement du cooldown
+    await setCooldown(sheets, rowNumber, COOLDOWN_ROLL_COL);
+
     const fields = Object.entries(totalGains).map(([res, wanted]) => {
-      const got = applied?.[res] ?? 0; // delta réellement appliqué
+      const got = applied?.[res] ?? 0;
       const capped = got < wanted;
-
       const capText = Number.isFinite(cap) ? ` (cap **${Number(cap).toLocaleString()}**)` : "";
-
       return {
         name: `${RESOURCE_EMOJIS[res] || ""} ${res.charAt(0).toUpperCase() + res.slice(1)}`,
         value: capped
@@ -572,25 +566,20 @@ async function handleRoll(interaction) {
 }
 
 // =============================
-// ARGENT – CONFIG + UTILITAIRES + HANDLER
+// /argent
 // =============================
 
 const ARGENT_CONFIG = {
-  cite:   { dice: 5, mult: 300 },
-  ville:  { dice: 5, mult: 250 },
-  bourg:  { dice: 5, mult: 200 },
-  village:{ dice: 5, mult: 150 },
-  hameau: { dice: 5, mult: 100 }
+  cite:    { dice: 5, mult: 300 },
+  ville:   { dice: 5, mult: 250 },
+  bourg:   { dice: 5, mult: 200 },
+  village: { dice: 5, mult: 150 },
+  hameau:  { dice: 5, mult: 100 }
 };
 
-// Pour l'argent : on ne compte QUE le dernier niveau "Terminé".
-// Si rien n'est "Terminé" => hameau.
 function getCityTierForArgent(row) {
-  const isDone = (col) => {
-    const v = (row[idx(col)] || "").toString().toLowerCase().trim();
-    return v.includes("terminé");
-  };
-
+  const isDone = (col) =>
+    (row[idx(col)] || "").toString().toLowerCase().trim().includes("terminé");
   if (isDone("BR")) return "cite";
   if (isDone("BA")) return "ville";
   if (isDone("AN")) return "bourg";
@@ -606,10 +595,23 @@ async function handleArgent(interaction) {
     const sheets = await getSheetsClient();
     const rows = await readSheet(sheets);
 
-    // On récupère les VILLES (lignes avec un nom de ville en col S)
     const cities = getPlayerCities(rows, playerName);
     if (!cities.length) {
       return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${playerName}** dans le Sheets.`);
+    }
+
+    const playerRows = getPlayerRowsForRoll(rows, playerName);
+    if (!playerRows.length) {
+      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${playerName}** dans le Sheets.`);
+    }
+
+    // Vérification cooldown
+    const rowNumber = 11 + playerRows[0].index;
+    const onCooldown = await isOnCooldown(sheets, rowNumber, COOLDOWN_ARGENT_COL);
+    if (onCooldown) {
+      return interaction.editReply(
+        `⏳ **${playerName}**, tu as déjà perçu tes revenus aujourd'hui !\nReviens demain à **minuit (heure de Paris)**.`
+      );
     }
 
     let total = 0;
@@ -619,18 +621,14 @@ async function handleArgent(interaction) {
       const tier = getCityTierForArgent(c.data);
       const cfg = ARGENT_CONFIG[tier] || ARGENT_CONFIG.hameau;
       const gain = rollDice(cfg.dice, cfg.mult);
-
       total += gain;
       perCity.push({ cityName: c.cityName, tier, gain });
     }
 
-    // Ajout sur la première ligne du joueur (même logique que /roll)
-    const playerRows = getPlayerRowsForRoll(rows, playerName);
-    if (!playerRows.length) {
-      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${playerName}** dans le Sheets.`);
-    }
-
     await updatePlayerResources(sheets, playerRows[0].index, { argent: total });
+
+    // Enregistrement du cooldown
+    await setCooldown(sheets, rowNumber, COOLDOWN_ARGENT_COL);
 
     const fields = perCity.map(x => ({
       name: `🏛️ ${x.cityName}`,
@@ -657,14 +655,21 @@ async function handleArgent(interaction) {
   }
 }
 
+// =============================
+// /add  (réservé aux Maîtres du Jeu)
+// =============================
+
 async function handleAdd(interaction) {
-  // Nouveaux paramètres:
-  // - joueur (User) optionnel
-  // - ressource (String) optionnel (défaut: "argent")
-  // - montant (Integer) requis
+  // Vérification du rôle
+  if (!hasMJRole(interaction)) {
+    return interaction.reply({
+      content: `🚫 Commande réservée aux **${MJ_ROLE_NAME}**.`,
+      flags: 64
+    });
+  }
+
   const targetUser = interaction.options.getUser("joueur") || interaction.user;
   const targetName = targetUser.username;
-
   const ressource = (interaction.options.getString("ressource") || "argent").toLowerCase();
   const montant = interaction.options.getInteger("montant");
 
@@ -688,7 +693,6 @@ async function handleAdd(interaction) {
 
     const { applied, cap } = await updatePlayerResources(sheets, playerRows[0].index, { [ressource]: montant });
     const realAdded = applied?.[ressource] ?? 0;
-
     const emoji = RESOURCE_EMOJIS[ressource] || "";
     const capped = ressource !== "argent" && realAdded < montant;
 
@@ -703,10 +707,21 @@ async function handleAdd(interaction) {
   }
 }
 
+// =============================
+// /remove  (réservé aux Maîtres du Jeu)
+// =============================
+
 async function handleRemove(interaction) {
+  // Vérification du rôle
+  if (!hasMJRole(interaction)) {
+    return interaction.reply({
+      content: `🚫 Commande réservée aux **${MJ_ROLE_NAME}**.`,
+      flags: 64
+    });
+  }
+
   const targetUser = interaction.options.getUser("joueur") || interaction.user;
   const targetName = targetUser.username;
-
   const ressource = (interaction.options.getString("ressource") || "argent").toLowerCase();
   const montant = interaction.options.getInteger("montant");
 
@@ -728,7 +743,6 @@ async function handleRemove(interaction) {
       return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${targetName}** dans le Sheets.`);
     }
 
-    // Lire la ligne ressources actuelle
     const baseRowIndex = playerRows[0].index;
     const rowNumber = 11 + baseRowIndex;
     const range = `${SHEET_NAME}!A${rowNumber}:N${rowNumber}`;
@@ -751,10 +765,8 @@ async function handleRemove(interaction) {
       );
     }
 
-    // Retirer via delta négatif
     const { applied } = await updatePlayerResources(sheets, baseRowIndex, { [ressource]: -montant });
     const realRemoved = Math.abs(applied?.[ressource] ?? 0);
-
     const emoji = RESOURCE_EMOJIS[ressource] || "";
     const newBalance = cur - realRemoved;
 
@@ -767,13 +779,13 @@ async function handleRemove(interaction) {
     return interaction.editReply(`⚠️ Erreur : ${err.message}`);
   }
 }
+
 // =============================
-// /ville & /ressources – OUTILS
+// /ressources & /ville – OUTILS
 // =============================
 
 function prettyCityLevel(level) {
-  if (!level) return "hameau";
-  return level; // village / bourg / ville / cite
+  return level || "hameau";
 }
 
 function titleCase(s) {
@@ -781,10 +793,6 @@ function titleCase(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/**
- * Renvoie les ressources courantes du joueur (sur la 1ère ligne du bloc joueur),
- * + cap (col L).
- */
 async function getPlayerResourceRow(sheets, rows, playerName) {
   const playerRows = getPlayerRowsForRoll(rows, playerName);
   if (!playerRows.length) return null;
@@ -800,30 +808,19 @@ async function getPlayerResourceRow(sheets, rows, playerName) {
 
   const row = res.data.values?.[0] || [];
   const cap = getStorageCapFromRow(row);
-
   return { row, cap, baseRowIndex };
 }
 
-/**
- * Détecte, pour une ville (une ligne), les bâtiments :
- * - niveau "Terminé" max
- * - et s'il existe un niveau "En construction"
- */
 function detectBuildingsStatus(row) {
   const out = [];
-
   for (const bat of Object.keys(BUILDING_COLS)) {
-    // On veut surtout les vrais bâtiments + entrepot + militaires + (optionnel) ville
-    // Si tu veux filtrer, tu peux faire une whitelist.
     const lvlCols = BUILDING_COLS[bat];
-
     let maxDone = 0;
     let hasConstruction = false;
 
     for (const [lvlStr, col] of Object.entries(lvlCols)) {
       const lvl = parseInt(lvlStr, 10);
       const v = (row[idx(col)] || "").toString().toLowerCase().trim();
-
       if (!v) continue;
       if (v.includes("terminé")) maxDone = Math.max(maxDone, lvl);
       if (v.includes("en construction")) hasConstruction = true;
@@ -833,15 +830,10 @@ function detectBuildingsStatus(row) {
       out.push({ bat, maxDone, hasConstruction });
     }
   }
-
-  // Tri: terminés desc puis alpha
   out.sort((a, b) => (b.maxDone - a.maxDone) || a.bat.localeCompare(b.bat));
   return out;
 }
 
-/**
- * Handler /ressources
- */
 async function handleRessources(interaction) {
   const playerName = interaction.user.username;
   await interaction.deferReply();
@@ -866,7 +858,9 @@ async function handleRessources(interaction) {
       };
     });
 
-    const capText = Number.isFinite(cap) ? `Cap entrepôt (L) : **${Number(cap).toLocaleString()}**` : `Cap entrepôt (L) : **∞**`;
+    const capText = Number.isFinite(cap)
+      ? `Cap entrepôt (L) : **${Number(cap).toLocaleString()}**`
+      : `Cap entrepôt (L) : **∞**`;
 
     const embed = new EmbedBuilder()
       .setTitle("📦 Ressources")
@@ -882,10 +876,6 @@ async function handleRessources(interaction) {
   }
 }
 
-/**
- * Handler /ville
- * Liste les villes (col S) + niveau de ville + bâtiments détectés.
- */
 async function handleVille(interaction) {
   const playerName = interaction.user.username;
   await interaction.deferReply();
@@ -899,21 +889,18 @@ async function handleVille(interaction) {
       return interaction.editReply(`👋 Aucune ville trouvée pour **${playerName}** dans le Sheets.`);
     }
 
-    // Construire un "bloc" par ville (max 25 fields dans un embed)
-    // On va faire 1 field par ville (ok jusqu'à 25 villes).
+    const ALLOWED = new Set([
+      "scierie","ferme","carriere_pierre","atelier_tanneur","paturage","carriere_argile","mine_fer","mine_sel","atelier_poterie",
+      "entrepot",
+      "camp_militaire","caserne_militaire","quartier_militaire","bastion_militaire","forteresse_militaire"
+    ]);
+
     const fields = [];
 
     for (const c of cities) {
       const level = prettyCityLevel(getCityLevel(c.data));
-      const tierArgent = getCityTierForArgent(c.data); // utile si tu veux afficher le tier argent
+      const tierArgent = getCityTierForArgent(c.data);
       const b = detectBuildingsStatus(c.data);
-
-      // Option: ne montrer que prod + entrepot + militaire
-      const ALLOWED = new Set([
-        "scierie","ferme","carriere_pierre","atelier_tanneur","paturage","carriere_argile","mine_fer","mine_sel","atelier_poterie",
-        "entrepot",
-        "camp_militaire","caserne_militaire","quartier_militaire","bastion_militaire","forteresse_militaire"
-      ]);
 
       const lines = b
         .filter(x => ALLOWED.has(x.bat))
@@ -927,11 +914,7 @@ async function handleVille(interaction) {
         `Niveau ville: **${level}** (argent: **${tierArgent}**)\n` +
         (lines.length ? lines.join("\n") : "_Aucun bâtiment détecté_");
 
-      fields.push({
-        name: `🏛️ ${c.cityName}`,
-        value,
-        inline: false
-      });
+      fields.push({ name: `🏛️ ${c.cityName}`, value, inline: false });
     }
 
     const embed = new EmbedBuilder()
@@ -940,7 +923,6 @@ async function handleVille(interaction) {
       .addFields(fields.slice(0, 25))
       .setColor(0x8e44ad);
 
-    // Si >25 villes, on prévient (Discord limite)
     if (cities.length > 25) {
       embed.setFooter({ text: `Affichage limité à 25 villes (Discord limit).` });
     }
@@ -952,10 +934,9 @@ async function handleVille(interaction) {
     return interaction.editReply(`⚠️ Erreur : ${err.message}`);
   }
 }
+
 // =============================
 // /sell
-// Retire 500 de chaque ressource
-// Ajoute 8125 argent
 // =============================
 
 async function handleSell(interaction) {
@@ -969,14 +950,12 @@ async function handleSell(interaction) {
     const rows = await readSheet(sheets);
 
     const playerRows = getPlayerRowsForRoll(rows, targetName);
-
     if (!playerRows.length) {
       return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${targetName}** dans le Sheets.`);
     }
 
     const baseRowIndex = playerRows[0].index;
     const rowNumber = 11 + baseRowIndex;
-
     const range = `${SHEET_NAME}!A${rowNumber}:N${rowNumber}`;
 
     const res = await sheets.spreadsheets.values.get({
@@ -986,23 +965,10 @@ async function handleSell(interaction) {
 
     const row = res.data.values?.[0] || [];
 
-    // Ressources à retirer
-    const resourcesToRemove = [
-      "bois",
-      "pierre",
-      "nourriture",
-      "fer",
-      "sel",
-      "argile",
-      "laine",
-      "fourrure",
-      "poterie"
-    ];
+    const resourcesToRemove = ["bois","pierre","nourriture","fer","sel","argile","laine","fourrure","poterie"];
 
-    // Vérification
     for (const r of resourcesToRemove) {
       const current = parseCompactNumber(row[idx(COLS[r])] || "0");
-
       if (current < 500) {
         return interaction.editReply(
           `❌ **${targetName}** n'a pas assez de **${r}**.\n` +
@@ -1011,16 +977,10 @@ async function handleSell(interaction) {
       }
     }
 
-    // Prépare les modifications
     const updates = {};
-
-    for (const r of resourcesToRemove) {
-      updates[r] = -500;
-    }
-
+    for (const r of resourcesToRemove) updates[r] = -500;
     updates.argent = 8125;
 
-    // Application
     await updatePlayerResources(sheets, baseRowIndex, updates);
 
     const embed = new EmbedBuilder()
@@ -1039,6 +999,7 @@ async function handleSell(interaction) {
     return interaction.editReply(`⚠️ Erreur : ${err.message}`);
   }
 }
+
 // =============================
 // DISCORD BOT
 // =============================
@@ -1052,55 +1013,17 @@ client.once("ready", () => {
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
-  // =============================
-  // /roll
-  // =============================
-  if (interaction.commandName === "roll") {
-    // ⚠️ handleRoll s'occupe déjà de deferReply + editReply
-    return handleRoll(interaction);
-  }
-  // =============================
-  // /argent
-  // =============================
-  if (interaction.commandName === "argent") {
-    return handleArgent(interaction);
-  }
-  // =============================
-  // /remove
-  // =============================
-  if (interaction.commandName === "remove") {
-    return handleRemove(interaction);
-  }
+  if (interaction.commandName === "roll")       return handleRoll(interaction);
+  if (interaction.commandName === "argent")     return handleArgent(interaction);
+  if (interaction.commandName === "remove")     return handleRemove(interaction);
+  if (interaction.commandName === "add")        return handleAdd(interaction);
+  if (interaction.commandName === "ressources") return handleRessources(interaction);
+  if (interaction.commandName === "sell")       return handleSell(interaction);
+  if (interaction.commandName === "ville")      return handleVille(interaction);
 
-  // =============================
-  // /add
-  // =============================
-  if (interaction.commandName === "add") {
-    return handleAdd(interaction);
-  }
-    // =============================
-  // /ressources
-  // =============================
-  if (interaction.commandName === "ressources") {
-    return handleRessources(interaction);
-  }
-  // =============================
-  // /sell
-  // =============================
-  if (interaction.commandName === "sell") {
-    return handleSell(interaction);
-  }
-
-  // =============================
-  // /ville
-  // =============================
-  if (interaction.commandName === "ville") {
-    return handleVille(interaction);
-  }
   // =============================
   // /build
   // =============================
-
   if (interaction.commandName === "build") {
     await interaction.deferReply({ flags: 64 });
 
@@ -1116,10 +1039,7 @@ client.on("interactionCreate", async interaction => {
       })).data.values || [];
 
       const cities = getPlayerCities(rows, player);
-
-      if (!cities.length) {
-        return interaction.editReply("❌ Joueur introuvable");
-      }
+      if (!cities.length) return interaction.editReply("❌ Joueur introuvable");
 
       const resourceCity = cities[0];
       const buildCity = cities[cities.length - 1];
@@ -1153,18 +1073,12 @@ client.on("interactionCreate", async interaction => {
 
     } catch (err) {
       console.error("ERREUR BUILD:", err);
-
       if (interaction.deferred || interaction.replied) {
         return interaction.editReply("❌ Erreur interne");
       }
-
-      return interaction.reply({
-        content: "❌ Erreur interne",
-        flags: 64
-      });
+      return interaction.reply({ content: "❌ Erreur interne", flags: 64 });
     }
-  } // ferme if build
-
+  }
 }); // ferme client.on("interactionCreate")
 
 client.login(process.env.DISCORD_TOKEN);
