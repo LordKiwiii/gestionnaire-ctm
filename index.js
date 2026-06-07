@@ -1025,7 +1025,7 @@ client.on("interactionCreate", async interaction => {
   // /build
   // =============================
   if (interaction.commandName === "build") {
-    await interaction.deferReply({ flags: 64 });
+    await interaction.deferReply();
 
     try {
       const building = interaction.options.getString("batiment");
@@ -1076,7 +1076,7 @@ client.on("interactionCreate", async interaction => {
       if (interaction.deferred || interaction.replied) {
         return interaction.editReply("❌ Erreur interne");
       }
-      return interaction.reply({ content: "❌ Erreur interne", flags: 64 });
+      return interaction.reply({ content: "❌ Erreur interne"});
     }
   }
 }); // ferme client.on("interactionCreate")
