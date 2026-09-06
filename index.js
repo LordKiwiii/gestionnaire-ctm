@@ -34,19 +34,6 @@ const SHEET_ID = "1c6tGfwmwEXDmyHoiUwsI7prtlfu_gN0nq-F82jC0As4";
 const SHEET_NAME = "Rapport";
 const PLAYER_NAME_COL = "O";
 
-// =============================
-// PERMISSIONS
-// =============================
-
-const MJ_ROLE_NAME = "Maîtres du Jeu";
-
-function hasMJRole(interaction) {
-  const member = interaction.member;
-  if (!member) return false;
-  // Les admins du serveur passent toujours
-  if (member.permissions.has("Administrator")) return true;
-  return member.roles.cache.some(r => r.name === MJ_ROLE_NAME);
-}
 
 // =============================
 // COOLDOWNS – COLONNES CI (roll) et CJ (argent)
@@ -659,15 +646,11 @@ async function handleArgent(interaction) {
 // /add  (réservé aux Maîtres du Jeu)
 // =============================
 
-async function handleAdd(interaction) {
-  // Vérification du rôle
-  if (!hasMJRole(interaction)) {
-    return interaction.reply({
-      content: `🚫 Commande réservée aux **${MJ_ROLE_NAME}**.`,
-      flags: 64
-    });
-  }
+// =============================
+// /add
+// =============================
 
+async function handleAdd(interaction) {
   const targetUser = interaction.options.getUser("joueur") || interaction.user;
   const targetName = targetUser.username;
   const ressource = (interaction.options.getString("ressource") || "argent").toLowerCase();
@@ -676,10 +659,17 @@ async function handleAdd(interaction) {
   await interaction.deferReply();
 
   if (!montant || montant <= 0) {
-    return interaction.editReply("❌ Montant invalide. Mets un nombre entier positif.");
+    return interaction.editReply({
+      content: "❌ Montant invalide. Mets un nombre entier positif.",
+      ephemeral: false
+    });
   }
+
   if (!COLS[ressource]) {
-    return interaction.editReply(`❌ Ressource invalide: **${ressource}**. Ressources possibles: ${RESOURCE_KEYS.join(", ")}`);
+    return interaction.editReply({
+      content: `❌ Ressource invalide : **${ressource}**.\nRessources possibles : ${RESOURCE_KEYS.join(", ")}`,
+      ephemeral: false
+    });
   }
 
   try {
@@ -687,39 +677,49 @@ async function handleAdd(interaction) {
     const rows = await readSheet(sheets);
 
     const playerRows = getPlayerRowsForRoll(rows, targetName);
+
     if (!playerRows.length) {
-      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${targetName}** dans le Sheets.`);
+      return interaction.editReply({
+        content: `👋 Aucun enregistrement trouvé pour **${targetName}** dans le Sheets.`,
+        ephemeral: false
+      });
     }
 
-    const { applied, cap } = await updatePlayerResources(sheets, playerRows[0].index, { [ressource]: montant });
+    const { applied, cap } = await updatePlayerResources(
+      sheets,
+      playerRows[0].index,
+      { [ressource]: montant }
+    );
+
     const realAdded = applied?.[ressource] ?? 0;
     const emoji = RESOURCE_EMOJIS[ressource] || "";
     const capped = ressource !== "argent" && realAdded < montant;
 
-    return interaction.editReply(
-      capped
+    return interaction.editReply({
+      content: capped
         ? `✅ Ajout sur **${targetName}** : **+${Number(realAdded).toLocaleString()}** ${emoji} (cap **${Number(cap).toLocaleString()}**).`
-        : `✅ Ajout sur **${targetName}** : **+${Number(realAdded).toLocaleString()}** ${emoji}.`
-    );
+        : `✅ Ajout sur **${targetName}** : **+${Number(realAdded).toLocaleString()}** ${emoji}.`,
+      ephemeral: false
+    });
+
   } catch (err) {
     console.error(err);
-    return interaction.editReply(`⚠️ Erreur : ${err.message}`);
+
+    return interaction.editReply({
+      content: `⚠️ Erreur : ${err.message}`,
+      ephemeral: false
+    });
   }
 }
-
 // =============================
 // /remove  (réservé aux Maîtres du Jeu)
 // =============================
 
-async function handleRemove(interaction) {
-  // Vérification du rôle
-  if (!hasMJRole(interaction)) {
-    return interaction.reply({
-      content: `🚫 Commande réservée aux **${MJ_ROLE_NAME}**.`,
-      flags: 64
-    });
-  }
+// =============================
+// /remove
+// =============================
 
+async function handleRemove(interaction) {
   const targetUser = interaction.options.getUser("joueur") || interaction.user;
   const targetName = targetUser.username;
   const ressource = (interaction.options.getString("ressource") || "argent").toLowerCase();
@@ -728,10 +728,17 @@ async function handleRemove(interaction) {
   await interaction.deferReply();
 
   if (!montant || montant <= 0) {
-    return interaction.editReply("❌ Montant invalide. Mets un nombre entier positif.");
+    return interaction.editReply({
+      content: "❌ Montant invalide. Mets un nombre entier positif.",
+      ephemeral: false
+    });
   }
+
   if (!COLS[ressource]) {
-    return interaction.editReply(`❌ Ressource invalide: **${ressource}**. Ressources possibles: ${RESOURCE_KEYS.join(", ")}`);
+    return interaction.editReply({
+      content: `❌ Ressource invalide : **${ressource}**.\nRessources possibles : ${RESOURCE_KEYS.join(", ")}`,
+      ephemeral: false
+    });
   }
 
   try {
@@ -739,8 +746,12 @@ async function handleRemove(interaction) {
     const rows = await readSheet(sheets);
 
     const playerRows = getPlayerRowsForRoll(rows, targetName);
+
     if (!playerRows.length) {
-      return interaction.editReply(`👋 Aucun enregistrement trouvé pour **${targetName}** dans le Sheets.`);
+      return interaction.editReply({
+        content: `👋 Aucun enregistrement trouvé pour **${targetName}** dans le Sheets.`,
+        ephemeral: false
+      });
     }
 
     const baseRowIndex = playerRows[0].index;
@@ -753,33 +764,48 @@ async function handleRemove(interaction) {
     });
 
     const row = res.data.values?.[0] || [];
+
     const colIndex = idx(COLS[ressource]);
     const cur = parseCompactNumber(row[colIndex] || "0");
 
     if (cur < montant) {
       const emoji = RESOURCE_EMOJIS[ressource] || "";
-      return interaction.editReply(
-        `💸 Solde insuffisant pour **${targetName}** : ` +
-        `il/elle a **${Number(cur).toLocaleString()}** ${emoji}, ` +
-        `tu veux retirer **${Number(montant).toLocaleString()}**.`
-      );
+
+      return interaction.editReply({
+        content:
+          `💸 Solde insuffisant pour **${targetName}** : ` +
+          `il/elle a **${Number(cur).toLocaleString()}** ${emoji}, ` +
+          `tu veux retirer **${Number(montant).toLocaleString()}**.`,
+        ephemeral: false
+      });
     }
 
-    const { applied } = await updatePlayerResources(sheets, baseRowIndex, { [ressource]: -montant });
+    const { applied } = await updatePlayerResources(
+      sheets,
+      baseRowIndex,
+      { [ressource]: -montant }
+    );
+
     const realRemoved = Math.abs(applied?.[ressource] ?? 0);
     const emoji = RESOURCE_EMOJIS[ressource] || "";
     const newBalance = cur - realRemoved;
 
-    return interaction.editReply(
-      `✅ Retrait sur **${targetName}** : **-${Number(realRemoved).toLocaleString()}** ${emoji}. ` +
-      `Nouveau solde : **${Number(newBalance).toLocaleString()}** ${emoji}.`
-    );
+    return interaction.editReply({
+      content:
+        `✅ Retrait sur **${targetName}** : **-${Number(realRemoved).toLocaleString()}** ${emoji}. ` +
+        `Nouveau solde : **${Number(newBalance).toLocaleString()}** ${emoji}.`,
+      ephemeral: false
+    });
+
   } catch (err) {
     console.error(err);
-    return interaction.editReply(`⚠️ Erreur : ${err.message}`);
+
+    return interaction.editReply({
+      content: `⚠️ Erreur : ${err.message}`,
+      ephemeral: false
+    });
   }
 }
-
 // =============================
 // /ressources & /ville – OUTILS
 // =============================
